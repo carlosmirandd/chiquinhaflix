@@ -4,11 +4,13 @@
 
 | Login | Início |
 |---|---|
-| ![Tela de login](docs/login.jpg) | ![Banner em destaque e fileiras](docs/catalogo.jpg) |
+| ![Tela de login](docs/login.jpg) | ![Banner em destaque](docs/catalogo.jpg) |
 
-| Fileiras e Top 10 | Episódios |
+| Fileiras e Top 10 | Detalhes da série |
 |---|---|
-| ![Fileiras de séries](docs/fileiras.jpg) | ![Lista de episódios](docs/episodios.jpg) |
+| ![Fileiras de séries](docs/fileiras.jpg) | ![Modal de detalhes](docs/detalhes.jpg) |
+
+![Lista de episódios](docs/episodios.jpg)
 
 ## O contexto
 
@@ -16,8 +18,8 @@ O **ChiquinhaFlix** nasceu em **março de 2023**, num trabalho em grupo da disci
 
 Esta versão pega a ideia original e a transforma num **site de verdade**: HTML, CSS e JavaScript puros, sem build, sem dependências e sem servidor. Mantive o clima da versão original:
 
-- a **logo** (claro que a Chiquinha continua aqui);
-- o visual agora segue o estilo dos grandes serviços de streaming (banner em destaque, fileiras com rolagem horizontal, Top 10, lista de episódios), mas com marca própria e sem usar nome nem logo de nenhum deles;
+- a **logo** (a Chiquinha e o nome, no canto esquerdo);
+- o visual agora segue o estilo dos grandes serviços de streaming (banner em destaque, fileiras com rolagem horizontal, Top 10, modal de detalhes e lista de episódios), mas com marca própria e sem usar nome nem logo de nenhum deles;
 - a **tela de "Faça Login"** (agora sem senha: é só um nome, salvo no seu navegador);
 - o **degradê roxo**;
 - a **estrela de favoritos** ⭐.
@@ -26,6 +28,7 @@ Esta versão pega a ideia original e a transforma num **site de verdade**: HTML,
 
 - Banner em destaque, fileiras por gênero, **Top 10**, **Continuar assistindo** e **No ar hoje**.
 - **Busca** por nome.
+- **Modal de detalhes** com elenco, gêneros, "Continuar" e barra de progresso.
 - Player com seletor de **temporada** e **episódio**, botões de anterior/próximo (passam sozinhos para a temporada seguinte) e marcação dos episódios já vistos.
 - **Minha lista** e **histórico** ("continuar assistindo"), guardados no `localStorage` do navegador. Nada sai da sua máquina.
 
@@ -70,7 +73,7 @@ Este é um **projeto pessoal, educacional e sem fins lucrativos**.
 index.html   → telas (login, catálogo, player)
 style.css    → visual
 app.js       → lógica (TVMaze, player, favoritos, histórico)
-assets/      → logo
+assets/      → logo (rosto e nome recortados do original)
 ```
 
 ## Licença
