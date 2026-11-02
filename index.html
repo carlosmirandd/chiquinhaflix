@@ -2,98 +2,102 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>ChiquinhaFlix</title>
 <link rel="icon" href="assets/chiquinha.png">
-<link rel="stylesheet" href="style.css?v=202611021749">
+<link rel="stylesheet" href="style.css?v=202611021823">
 </head>
 <body>
 
-<!-- Login (só pra dar nome, sem senha) -->
-<section id="login" class="login" hidden>
-  <a class="brand login-brand"><img src="assets/chiquinha.png" alt="" class="brand-face"><img src="assets/nome.png" alt="ChiquinhaFlix" class="brand-name"></a>
-  <form class="login-card" id="loginForm">
-    <h1>Entrar</h1>
-    <input id="nome" type="text" placeholder="Nome de usuário" maxlength="30" autocomplete="off">
-    <button class="btn red" type="submit">Entrar</button>
-    <p class="hint">Sem senha e sem servidor: o nome fica salvo só no seu navegador.</p>
-  </form>
+<header id="hdr">
+  <div class="top">
+    <a class="brand" id="logo" title="Início"><img src="assets/chiquinha.png" alt="" class="brand-face"><img src="assets/nome.png" alt="ChiquinhaFlix" class="brand-name"></a>
+    <span class="page-title" id="pageTitle">Início</span>
+    <nav id="nav">
+      <button data-p="home" class="on">Início</button>
+      <button data-p="hoje">No ar hoje</button>
+      <button data-p="lista">Minha lista</button>
+    </nav>
+    <div class="right">
+      <div class="search" id="search">
+        <button id="searchBtn" aria-label="Buscar">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+        </button>
+        <input id="q" type="search" placeholder="Títulos, gêneros" autocomplete="off">
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Início -->
+<section id="home">
+  <div class="chips" id="chips"></div>
+  <div class="hero" id="hero" hidden>
+    <div class="hero-bg" id="heroBg"></div>
+    <div class="hero-shade"></div>
+    <div class="hero-body">
+      <h1 id="heroTitle"></h1>
+      <p id="heroMeta" class="dots"></p>
+      <p id="heroSin" class="hero-sin"></p>
+      <div class="hero-btns">
+        <button class="pill white" id="heroPlay"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg><span class="t-desk">Assistir</span><span class="t-mob">Assistir à série</span></button>
+        <button class="pill grey t-desk" id="heroInfo">Mais informações</button>
+        <button class="pill grey t-mob" id="heroFav">＋ Minha lista</button>
+      </div>
+    </div>
+    <div class="hero-badge" id="heroBadge" hidden></div>
+  </div>
+  <div id="rows"></div>
 </section>
 
-<!-- App -->
-<div id="app" hidden>
-  <header id="hdr">
-    <div class="top">
-      <a class="brand" id="logo" title="Início"><img src="assets/chiquinha.png" alt="" class="brand-face"><img src="assets/nome.png" alt="ChiquinhaFlix" class="brand-name"></a>
-      <nav id="nav">
-        <button data-p="home" class="on">Início</button>
-        <button data-p="hoje">No ar hoje</button>
-        <button data-p="lista">Minha lista</button>
-      </nav>
-      <div class="right">
-        <div class="search" id="search">
-          <button id="searchBtn" aria-label="Buscar">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
-          </button>
-          <input id="q" type="search" placeholder="Títulos, gêneros" autocomplete="off">
-        </div>
-        <button class="sair" id="sair">Sair</button>
-      </div>
-    </div>
-  </header>
+<!-- Grade / lista (busca, no ar hoje, minha lista, gênero) -->
+<section id="list" class="wrap" hidden>
+  <div class="sbar" id="sbar" hidden>
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+    <input id="q2" type="search" placeholder="Busque séries..." autocomplete="off">
+  </div>
+  <h2 id="listTitle"></h2>
+  <div class="grid" id="grid"></div>
+</section>
 
-  <!-- Início -->
-  <section id="home">
-    <div class="hero" id="hero" hidden>
-      <div class="hero-bg" id="heroBg"></div>
-      <div class="hero-shade"></div>
-      <div class="hero-body">
-        <h1 id="heroTitle"></h1>
-        <p id="heroMeta" class="dots"></p>
-        <p id="heroSin" class="hero-sin"></p>
-        <div class="hero-btns">
-          <button class="pill white" id="heroPlay"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg>Assistir</button>
-          <button class="pill grey" id="heroInfo">Mais informações</button>
-        </div>
-      </div>
-      <div class="hero-badge" id="heroBadge" hidden></div>
-    </div>
-    <div id="rows"></div>
-  </section>
+<!-- Player -->
+<section id="view" class="wrap" hidden>
+  <button class="pill grey small" id="back">← Voltar</button>
+  <div class="player" id="player"></div>
+  <div class="player-bar">
+    <span id="epName"></span>
+    <span>
+      <button class="pill grey small" id="prev">⏮ Anterior</button>
+      <button class="pill grey small" id="next">Próximo ⏭</button>
+    </span>
+  </div>
+  <h1 class="vtitle" id="vTitle"></h1>
+  <div class="eps-head"><h2>Episódios</h2><select id="season"></select></div>
+  <div class="eps" id="eps"></div>
+</section>
 
-  <!-- Grade (busca, no ar hoje, minha lista) -->
-  <section id="list" class="wrap" hidden>
-    <h2 id="listTitle"></h2>
-    <div class="grid" id="grid"></div>
-  </section>
+<div class="center" id="msg"></div>
 
-  <!-- Player -->
-  <section id="view" class="wrap" hidden>
-    <button class="pill grey small" id="back">← Voltar</button>
-    <div class="player" id="player"></div>
-    <div class="player-bar">
-      <span id="epName"></span>
-      <span>
-        <button class="pill grey small" id="prev">⏮ Anterior</button>
-        <button class="pill grey small" id="next">Próximo ⏭</button>
-      </span>
-    </div>
-    <h1 class="vtitle" id="vTitle"></h1>
-    <div class="eps-head"><h2>Episódios</h2><select id="season"></select></div>
-    <div class="eps" id="eps"></div>
-  </section>
+<footer>
+  <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros. Não afiliado a nenhum serviço de streaming.</p>
+  <p>Dados de séries via <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener">TVMaze</a> (CC BY-SA). Textos traduzidos automaticamente.</p>
+</footer>
 
-  <div class="center" id="msg"></div>
+<!-- Barra inferior (celular) -->
+<nav class="tabbar" id="tabbar">
+  <button data-p="home" class="on"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9.5 15h5" stroke-linecap="round"/></svg><span>Início</span></button>
+  <button data-p="hoje"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2.5"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/></svg><span>No ar</span></button>
+  <button data-p="busca"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><span>Buscar</span></button>
+  <button data-p="lista"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>Minha lista</span></button>
+</nav>
 
-  <footer>
-    <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros. Não afiliado a nenhum serviço de streaming.</p>
-    <p>Dados de séries via <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener">TVMaze</a> (CC BY-SA).</p>
-  </footer>
-</div>
-
-<!-- Modal de detalhes -->
+<!-- Detalhes (modal no desktop, tela cheia no celular) -->
 <div id="modal" class="modal" hidden>
   <div class="sheet" id="sheet">
+    <button class="m-back" id="mBack" aria-label="Voltar">
+      <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 5l-7 7 7 7"/></svg>
+    </button>
     <button class="close" id="mClose" aria-label="Fechar">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
     </button>
@@ -102,7 +106,8 @@
       <div class="m-shade"></div>
       <div class="m-hero-body">
         <h1 id="mTitle"></h1>
-        <div class="m-prog" id="mProg" hidden><i></i><span></span></div>
+        <p class="m-meta m-meta-mob" id="mMetaMob"></p>
+        <div class="m-prog" id="mProg" hidden></div>
         <div class="m-btns">
           <button class="pill white sq" id="mPlay"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg><span id="mPlayTxt">Assistir</span></button>
           <button class="round" id="mFav" title="Minha lista"></button>
@@ -111,11 +116,15 @@
     </div>
     <div class="m-body">
       <div class="m-left">
-        <p class="m-meta" id="mMeta"></p>
+        <p class="m-meta m-meta-desk" id="mMeta"></p>
         <p class="m-cur" id="mCur"></p>
         <p class="m-sin" id="mSin"></p>
       </div>
       <div class="m-right" id="mRight"></div>
+    </div>
+    <div class="m-actions">
+      <button id="mFav2"></button>
+      <button id="mShare"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.4"/><circle cx="17.5" cy="6" r="2.4"/><circle cx="17.5" cy="18" r="2.4"/><path d="M8.2 10.9l7.1-3.8M8.2 13.1l7.1 3.8"/></svg><span>Compartilhe</span></button>
     </div>
     <div class="m-eps">
       <div class="eps-head"><h2>Episódios</h2><select id="mSeason"></select></div>
@@ -124,6 +133,6 @@
   </div>
 </div>
 
-<script src="app.js?v=202611021749"></script>
+<script src="app.js?v=202611021823"></script>
 </body>
 </html>
