@@ -4,9 +4,13 @@
 
 **🔗 Online:** https://carlosmirandd.space/chiquinhaflix/
 
-| Login | Catálogo |
+| Login | Início |
 |---|---|
-| ![Tela de login](docs/login.jpg) | ![Catálogo de séries populares](docs/catalogo.jpg) |
+| ![Tela de login](docs/login.jpg) | ![Banner em destaque e fileiras](docs/catalogo.jpg) |
+
+| Fileiras e Top 10 | Episódios |
+|---|---|
+| ![Fileiras de séries](docs/fileiras.jpg) | ![Lista de episódios](docs/episodios.jpg) |
 
 ## O contexto
 
@@ -15,16 +19,17 @@ O **ChiquinhaFlix** nasceu em **março de 2023**, num trabalho em grupo da disci
 Esta versão pega a ideia original e a transforma num **site de verdade**: HTML, CSS e JavaScript puros, sem build, sem dependências e sem servidor. Mantive o clima da versão original:
 
 - a **logo** (claro que a Chiquinha continua aqui);
+- o visual agora segue o estilo dos grandes serviços de streaming (banner em destaque, fileiras com rolagem horizontal, Top 10, lista de episódios), mas com marca própria e sem usar nome nem logo de nenhum deles;
 - a **tela de "Faça Login"** (agora sem senha: é só um nome, salvo no seu navegador);
 - o **degradê roxo**;
 - a **estrela de favoritos** ⭐.
 
 ## O que ele faz
 
-- Catálogo de séries **populares** e do que está **no ar hoje**, com filtro por gênero.
+- Banner em destaque, fileiras por gênero, **Top 10**, **Continuar assistindo** e **No ar hoje**.
 - **Busca** por nome.
 - Player com seletor de **temporada** e **episódio**, botões de anterior/próximo (passam sozinhos para a temporada seguinte) e marcação dos episódios já vistos.
-- **Favoritos** e **histórico** ("continuar assistindo"), guardados no `localStorage` do navegador. Nada sai da sua máquina.
+- **Minha lista** e **histórico** ("continuar assistindo"), guardados no `localStorage` do navegador. Nada sai da sua máquina.
 
 ## Como funciona
 

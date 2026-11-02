@@ -10,57 +10,84 @@
 <body>
 
 <!-- Login (só pra dar nome, sem senha) -->
-<section id="login" class="screen login" hidden>
-  <img src="assets/logo.png" alt="ChiquinhaFlix" class="login-logo">
-  <h1>Faça Login</h1>
-  <input id="nome" type="text" placeholder="Nome de usuário" maxlength="30" autocomplete="off">
-  <button class="btn pri" id="entrar">Entrar</button>
-  <p class="hint">Sem senha e sem servidor: o nome fica salvo só no seu navegador.</p>
+<section id="login" class="login" hidden>
+  <div class="login-brand"><img src="assets/logo.png" alt="" class="login-avatar"><span class="wordmark">CHIQUINHAFLIX</span></div>
+  <form class="login-card" id="loginForm">
+    <h1>Entrar</h1>
+    <input id="nome" type="text" placeholder="Nome de usuário" maxlength="30" autocomplete="off">
+    <button class="btn red" type="submit">Entrar</button>
+    <p class="hint">Sem senha e sem servidor: o nome fica salvo só no seu navegador.</p>
+  </form>
 </section>
 
 <!-- App -->
 <div id="app" hidden>
-  <header>
+  <header id="hdr">
     <div class="top">
-      <img src="assets/logo.png" alt="" class="mini-logo" id="logo">
+      <span class="wordmark" id="logo">CHIQUINHAFLIX</span>
       <nav id="nav">
-        <button data-t="populares" class="on">Populares</button>
-        <button data-t="hoje">No ar hoje</button>
-        <button data-t="favoritos">⭐ Favoritos</button>
-        <button data-t="historico">Histórico</button>
+        <button data-p="home" class="on">Início</button>
+        <button data-p="hoje">No ar hoje</button>
+        <button data-p="lista">Minha lista</button>
       </nav>
-      <input id="q" type="search" placeholder="Buscar série...">
-      <button class="btn" id="sair" title="Sair">Sair</button>
+      <div class="right">
+        <input id="q" type="search" placeholder="Títulos, gêneros...">
+        <button class="avatar" id="sair" title="Sair"><img src="assets/logo.png" alt="Sair"></button>
+      </div>
     </div>
   </header>
 
-  <main>
-    <div id="catalog">
-      <p class="welcome" id="welcome"></p>
-      <div class="chips" id="chips"></div>
-      <h2 id="title"></h2>
-      <div class="grid" id="grid"></div>
-      <div class="center" id="msg"></div>
-    </div>
-
-    <div id="view" hidden>
-      <button class="btn" id="back">← Voltar</button>
-      <div class="player" id="player"></div>
-      <div class="info">
-        <h1 id="vTitle"></h1>
-        <button class="btn star" id="fav" title="Favoritar">☆</button>
-        <select id="season"></select>
-        <button class="btn" id="prev">← Anterior</button>
-        <button class="btn" id="next">Próximo →</button>
+  <!-- Início -->
+  <section id="home">
+    <div class="hero" id="hero" hidden>
+      <div class="hero-bg" id="heroBg"></div>
+      <div class="hero-shade"></div>
+      <div class="hero-body">
+        <h1 id="heroTitle"></h1>
+        <p id="heroMeta" class="meta"></p>
+        <p id="heroSin" class="hero-sin"></p>
+        <div class="hero-btns">
+          <button class="btn white" id="heroPlay">▶ Assistir</button>
+          <button class="btn grey" id="heroInfo">ⓘ Mais informações</button>
+        </div>
       </div>
-      <p class="epname" id="epName"></p>
-      <div class="eps" id="eps"></div>
-      <p class="sinopse" id="vSin"></p>
     </div>
-  </main>
+    <div id="rows"></div>
+  </section>
+
+  <!-- Grade (busca, no ar hoje, minha lista) -->
+  <section id="list" class="wrap" hidden>
+    <h2 id="listTitle"></h2>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- Série / player -->
+  <section id="view" class="wrap" hidden>
+    <button class="btn grey small" id="back">← Voltar</button>
+    <div class="player" id="player"></div>
+    <div class="player-bar">
+      <span id="epName"></span>
+      <span>
+        <button class="btn grey small" id="prev">⏮ Anterior</button>
+        <button class="btn grey small" id="next">Próximo ⏭</button>
+      </span>
+    </div>
+    <div class="detail">
+      <div class="detail-main">
+        <h1 id="vTitle"></h1>
+        <p class="meta" id="vMeta"></p>
+        <p class="sinopse" id="vSin"></p>
+      </div>
+      <button class="btn grey" id="fav">＋ Minha lista</button>
+    </div>
+    <div class="eps-head"><h2>Episódios</h2><select id="season"></select></div>
+    <div class="eps" id="eps"></div>
+  </section>
+
+  <div class="center" id="msg"></div>
 
   <footer>
-    <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros.</p>
+    <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros. Não afiliado a nenhum serviço de streaming.</p>
     <p>Dados de séries via <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener">TVMaze</a> (CC BY-SA).</p>
   </footer>
 </div>
