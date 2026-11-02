@@ -158,13 +158,37 @@ nav#nav button.on { color: #fff; font-weight: 700; background: rgba(120,128,138,
 footer { max-width: 1100px; margin: 20px auto 0; padding: 20px var(--pad) 40px; color: #757575; font-size: .78rem; text-align: center; }
 footer p { margin: 4px 0; }
 
+/* ao vivo: canais e agenda */
+.seg { display: flex; gap: 8px; margin-bottom: 16px; }
+.seg button { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); color: #ddd; border-radius: 999px; padding: 9px 22px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.seg button.on { background: #fff; color: #000; border-color: #fff; }
+.qc { width: 100%; max-width: 420px; background: #2b2b2b; border: 0; border-radius: 6px; padding: 12px 14px; font-size: 1rem; outline: none; margin-bottom: 12px; display: block; }
+.qc::placeholder { color: #9a9a9a; }
+.chips2 { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.chips2 button { flex: 0 0 auto; background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.2); border-radius: 999px; padding: 7px 16px; font-weight: 700; color: #ddd; cursor: pointer; font-size: .9rem; }
+.chips2 button.on { background: #fff; color: #000; border-color: #fff; }
+.chips2 button.adult { border-color: var(--red); color: #ff8a8f; }
+.chips2 button.adult.on { background: var(--red); color: #fff; border-color: var(--red); }
+.chgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px 10px; }
+.ch { cursor: pointer; }
+.ch .box { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; background: radial-gradient(circle at 50% 35%, #2a2a35, #16161c); display: flex; align-items: center; justify-content: center; padding: 14px; overflow: hidden; transition: transform .2s; }
+.ch:hover .box { transform: scale(1.04); }
+.ch .box img { max-width: 70%; max-height: 62%; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+.ch .box .fb { font-weight: 800; text-align: center; font-size: 1.05rem; line-height: 1.15; }
+.ch .live { position: absolute; top: 8px; left: 8px; background: var(--red); font-size: .62rem; font-weight: 800; letter-spacing: .5px; border-radius: 4px; padding: 2px 6px; }
+.ch p { margin: 7px 2px 0; font-size: .92rem; font-weight: 700; }
+.ch small { display: block; color: var(--mut); font-weight: 400; font-size: .75rem; margin-top: 2px; }
+#agendaBox iframe { width: 100%; height: calc(100vh - 190px); min-height: 480px; border: 0; border-radius: 10px; background: #000; display: block; }
+#agendaBox .ext { margin: 10px 2px 0; font-size: .8rem; }
+#view.canal .eps-head, #view.canal #eps, #view.canal #prev, #view.canal #next { display: none; }
+
 /* ================= CELULAR: igual ao app ================= */
 @media (max-width: 760px) {
   :root { --pad: 3.4%; }
   body { padding-bottom: 110px; }
   .t-desk { display: none !important; }
   .t-mob { display: inline-flex !important; }
-  .page-title { display: block; font-size: 1.9rem; font-weight: 700; }
+  .page-title { display: none; }
   .chips { display: flex; }
   .tabbar { display: flex; }
   .m-back, .m-actions, .m-meta.m-meta-mob { display: flex; }
@@ -173,7 +197,7 @@ footer p { margin: 4px 0; }
   header { background: linear-gradient(to bottom, rgba(16,20,52,.95) 0%, rgba(16,20,52,0) 100%); }
   .top { height: 64px; gap: 12px; padding: 10px var(--pad); }
   nav#nav, .right { display: none; }
-  .brand-name { display: none; }
+  .brand-name { height: 22px; }
   .brand-face { height: 44px; width: 44px; }
   .on-search header { display: none; }
 
@@ -223,7 +247,8 @@ footer p { margin: 4px 0; }
 
   /* tabbar flutuante */
   .tabbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom)); width: min(92vw, 430px); height: 66px; z-index: 40; background: rgba(38,38,40,.94); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.14); border-radius: 36px; padding: 6px; gap: 4px; }
-  .tabbar button { flex: 1; background: none; border: 0; border-radius: 28px; color: #b0b0b0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: .7rem; cursor: pointer; }
+  .tabbar svg { width: 25px; height: 25px; }
+  .tabbar button { flex: 1; min-width: 0; background: none; border: 0; border-radius: 28px; color: #b0b0b0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: .62rem; cursor: pointer; }
   .tabbar button.on { background: rgba(255,255,255,.13); color: #fff; }
   .on-modal .tabbar { display: none; }
 
@@ -263,4 +288,12 @@ footer p { margin: 4px 0; }
   .ep .t b span { display: block; margin-top: 4px; color: #999; }
   .ep .t p { grid-area: syn; display: block; -webkit-line-clamp: unset; font-size: .88rem; color: #bdbdbd; }
   .num2 { font-style: normal; }
+
+  .seg { margin-bottom: 12px; }
+  .chips2 { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin-left: calc(-1 * var(--pad)); margin-right: calc(-1 * var(--pad)); padding: 0 var(--pad); }
+  .chips2::-webkit-scrollbar { display: none; }
+  .qc { max-width: none; }
+  .chgrid { grid-template-columns: repeat(2, 1fr); gap: 12px 8px; }
+  .ch .box { padding: 10px; }
+  #agendaBox iframe { height: calc(100vh - 215px); border-radius: 8px; }
 }

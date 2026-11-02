@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <title>ChiquinhaFlix</title>
 <link rel="icon" href="assets/chiquinha.png">
-<link rel="stylesheet" href="style.css?v=202611021823">
+<link rel="stylesheet" href="style.css?v=202611021841">
 </head>
 <body>
 
@@ -17,6 +17,7 @@
     <nav id="nav">
       <button data-p="home" class="on">Início</button>
       <button data-p="hoje">No ar hoje</button>
+      <button data-p="vivo">Ao vivo</button>
       <button data-p="lista">Minha lista</button>
     </nav>
     <div class="right">
@@ -61,6 +62,23 @@
   <div class="grid" id="grid"></div>
 </section>
 
+<!-- Ao vivo: canais e agenda -->
+<section id="vivo" class="wrap" hidden>
+  <div class="seg" id="seg">
+    <button data-v="canais" class="on">Canais</button>
+    <button data-v="agenda">Agenda</button>
+  </div>
+  <div id="canaisBox">
+    <input id="qc" class="qc" type="search" placeholder="Buscar canal..." autocomplete="off">
+    <div class="chips2" id="catChips"></div>
+    <div class="chgrid" id="chgrid"></div>
+  </div>
+  <div id="agendaBox" hidden>
+    <iframe id="agendaFrame" title="Agenda esportiva" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *" allowfullscreen></iframe>
+    <p class="ext"><a href="https://superflixapi.fun/agenda" target="_blank" rel="noopener">Abrir a agenda em outra aba</a></p>
+  </div>
+</section>
+
 <!-- Player -->
 <section id="view" class="wrap" hidden>
   <button class="pill grey small" id="back">← Voltar</button>
@@ -88,6 +106,7 @@
 <nav class="tabbar" id="tabbar">
   <button data-p="home" class="on"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9.5 15h5" stroke-linecap="round"/></svg><span>Início</span></button>
   <button data-p="hoje"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2.5"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/></svg><span>No ar</span></button>
+  <button data-p="vivo"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg><span>Ao vivo</span></button>
   <button data-p="busca"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><span>Buscar</span></button>
   <button data-p="lista"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>Minha lista</span></button>
 </nav>
@@ -133,6 +152,6 @@
   </div>
 </div>
 
-<script src="app.js?v=202611021823"></script>
+<script src="app.js?v=202611021841"></script>
 </body>
 </html>

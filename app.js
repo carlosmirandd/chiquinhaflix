@@ -3,6 +3,8 @@
 const $ = id => document.getElementById(id);
 const API = 'https://api.tvmaze.com';
 const PLAYER = 'https://superflixapi.fun/serie/';
+const CANAL = 'https://superflixapi.fun/canal/';
+const AGENDA = 'https://superflixapi.fun/agenda';
 
 /* ---------- storage ---------- */
 const get = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -116,9 +118,9 @@ async function titulo(id, fallback) {
 let page = 'home', query = '', gsel = '', rendered = '', under = 'home', pending = null, cur = null;
 let populares = null, hojeCache = null, heroShow = null;
 const showCache = new Map();
-const TITULOS = { home: 'Início', hoje: 'No ar hoje', lista: 'Minha lista', busca: 'Buscar' };
+const TITULOS = { home: 'Início', hoje: 'No ar hoje', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
 
-const SECTIONS = ['home', 'list', 'view'];
+const SECTIONS = ['home', 'list', 'view', 'vivo'];
 function only(name) { SECTIONS.forEach(s => $(s).hidden = s !== name); $('msg').textContent = ''; }
 window.addEventListener('scroll', () => $('hdr').classList.toggle('solid', scrollY > 10));
 
@@ -141,13 +143,15 @@ $('q2').oninput = onType($('q2'));
 const pageKey = () => page === 'busca' ? 'busca:' + query : query ? 'q:' + query : page === 'genero' ? 'g:' + gsel : page;
 async function ensurePage() {
   const k = pageKey();
-  under = (!query && page === 'home') ? 'home' : 'list';
+  under = (!query && page === 'home') ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
   syncUI();
-  if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : renderGrid()); }
+  if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : under === 'vivo' ? renderVivo() : renderGrid()); }
   else only(under);
 }
 async function route() {
   const m = location.hash.match(/^#(serie|ver)=(\d+)$/);
+  const cn = location.hash.match(/^#canal=([A-Za-z0-9_-]{1,60})$/);
+  if (cn) { closeModal(); return openCanal(cn[1]); }
   if (m && m[1] === 'ver') { closeModal(); return openPlayer(+m[2]); }
   await ensurePage();
   if (m) openModal(+m[2]); else closeModal();
@@ -442,7 +446,7 @@ $('mShare').onclick = async () => {
 
 /* ---------- player ---------- */
 async function openPlayer(id) {
-  only('view'); window.scrollTo(0, 0);
+  only('view'); $('view').classList.remove('canal'); window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('eps').innerHTML = ''; $('epName').textContent = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -493,5 +497,99 @@ $('prev').onclick = () => {
   play(false);
 };
 $('back').onclick = () => { if (location.hash) history.back(); else route(); };
+
+/* ---------- ao vivo: canais e agenda (SuperFlix) ---------- */
+// A lista de canais é um retrato (canais.json) porque o SuperFlix não libera leitura
+// direta (CORS). A agenda muda todo dia, então aparece a própria página deles num iframe.
+let canais = null, vivoTab = get('vivoTab', 'canais'), catSel = '', qcanal = '', adulto = get('adulto', false);
+async function loadCanais() {
+  if (canais) return canais;
+  const r = await fetch('canais.json');
+  if (!r.ok) throw new Error('Erro ao carregar a lista de canais');
+  canais = await r.json();
+  return canais;
+}
+const semAcento = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+function setSeg(v) {
+  vivoTab = v === 'agenda' ? 'agenda' : 'canais';
+  set('vivoTab', vivoTab);
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.v === vivoTab));
+  $('canaisBox').hidden = vivoTab !== 'canais';
+  $('agendaBox').hidden = vivoTab !== 'agenda';
+  if (vivoTab === 'agenda' && !$('agendaFrame').getAttribute('src')) $('agendaFrame').setAttribute('src', AGENDA);
+}
+$('seg').onclick = e => { const b = e.target.closest('button'); if (b) { setSeg(b.dataset.v); window.scrollTo(0, 0); } };
+$('qc').oninput = () => { qcanal = $('qc').value.trim(); renderCanais(); };
+
+function canalTile(c) {
+  const d = document.createElement('div');
+  d.className = 'ch';
+  const box = document.createElement('div');
+  box.className = 'box';
+  const img = document.createElement('img');
+  img.loading = 'lazy'; img.alt = ''; img.referrerPolicy = 'no-referrer';
+  img.src = 'https://superflixapi.fun/img/' + c.s + '.png';
+  img.onerror = () => { const fb = document.createElement('div'); fb.className = 'fb'; fb.textContent = c.n; img.replaceWith(fb); };
+  box.appendChild(img);
+  box.insertAdjacentHTML('beforeend', '<span class="live">AO VIVO</span>');
+  d.appendChild(box);
+  d.insertAdjacentHTML('beforeend', '<p>' + esc(c.n) + '<small>' + esc(c.c.join(' · ')) + '</small></p>');
+  d.onclick = () => { location.hash = '#canal=' + c.s; };
+  return d;
+}
+
+function renderCanais() {
+  const q = semAcento(qcanal);
+  // canais adultos (a:1) só aparecem no chip 18+, depois da confirmação
+  const lista = (canais || []).filter(c => (c.a ? adulto && catSel === 'Adulto' : (!catSel || c.c.includes(catSel))) && (!q || semAcento(c.n).includes(q)));
+  $('chgrid').innerHTML = '';
+  lista.forEach(c => $('chgrid').appendChild(canalTile(c)));
+  $('msg').textContent = lista.length ? '' : 'Nenhum canal encontrado.';
+}
+
+const marcaChip = b => [...$('catChips').children].forEach(x => x.classList.toggle('on', x === b));
+
+async function renderVivo() {
+  only('vivo'); window.scrollTo(0, 0);
+  setSeg(vivoTab);
+  if (vivoTab === 'agenda') return;
+  $('msg').textContent = 'Carregando...';
+  try { await loadCanais(); } catch (e) { $('msg').textContent = e.message; return; }
+  const cont = {};
+  canais.filter(c => !c.a).forEach(c => c.c.forEach(k => cont[k] = (cont[k] || 0) + 1));
+  if (catSel === 'Adulto' && !adulto) catSel = '';
+  $('catChips').innerHTML = '';
+  ['', ...Object.keys(cont).sort((a, b) => cont[b] - cont[a])].forEach(k => {
+    const b = document.createElement('button');
+    b.textContent = k || 'Todos';
+    if (k === catSel) b.className = 'on';
+    b.onclick = () => { catSel = k; marcaChip(b); renderCanais(); };
+    $('catChips').appendChild(b);
+  });
+  const ad = document.createElement('button');
+  ad.textContent = '18+';
+  ad.className = 'adult' + (catSel === 'Adulto' ? ' on' : '');
+  ad.onclick = () => {
+    if (!adulto) {
+      if (!confirm('Esta seção tem canais de conteúdo adulto. Você confirma que tem 18 anos ou mais?')) return;
+      adulto = true; set('adulto', true);
+    }
+    catSel = 'Adulto'; marcaChip(ad); renderCanais();
+  };
+  $('catChips').appendChild(ad);
+  renderCanais();
+}
+
+async function openCanal(slug) {
+  only('view'); $('view').classList.add('canal'); window.scrollTo(0, 0);
+  let lista = [];
+  try { lista = await loadCanais(); } catch {}
+  const c = lista.find(x => x.s === slug);
+  $('vTitle').textContent = c ? c.n : slug;
+  $('epName').textContent = c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo';
+  // slug validado pelo regex da rota (letras, números, _ e -)
+  $('player').innerHTML = '<iframe src="' + CANAL + slug + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
+}
 
 route();
