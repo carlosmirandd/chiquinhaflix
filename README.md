@@ -2,6 +2,8 @@
 
 > Um visualizador de séries pessoal, feito por diversão. Evolução de um projetinho do ensino médio.
 
+**🔗 Online:** https://carlosmirandd.github.io/chiquinhaflix/
+
 | Login | Início |
 |---|---|
 | ![Tela de login](docs/login.jpg) | ![Banner em destaque](docs/catalogo.jpg) |
