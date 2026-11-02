@@ -8,7 +8,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { background: var(--bg); }
+html { background: var(--bg); scrollbar-gutter: stable; }
 body { margin: 0; color: #fff; background: var(--bg); font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; }
 body.lock { overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
@@ -79,7 +79,7 @@ nav button.on { color: #fff; font-weight: 700; background: rgba(120,128,138,.5);
 .row { margin: 0 0 34px; }
 .row h3 { margin: 0 var(--pad) 12px; font-size: 1.45rem; font-weight: 700; letter-spacing: -.2px; }
 .scroller { position: relative; }
-.track { display: flex; gap: 8px; padding: 0 var(--pad); overflow-x: auto; scroll-behavior: smooth; scrollbar-width: none; scroll-padding-left: var(--pad); }
+.track { display: flex; gap: 8px; padding: 14px var(--pad); margin: -14px 0; overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; scrollbar-width: none; scroll-padding-left: var(--pad); overscroll-behavior-x: contain; }
 .track::-webkit-scrollbar { display: none; }
 .arrow { position: absolute; top: 0; bottom: 0; width: var(--pad); min-width: 34px; background: rgba(20,20,20,.6); border: 0; color: #fff; font-size: 2.2rem; cursor: pointer; opacity: 0; transition: opacity .2s; z-index: 3; }
 .arrow.l { left: 0; } .arrow.r { right: 0; }
@@ -162,7 +162,7 @@ footer p { margin: 4px 0; }
 
 @media (max-width: 760px) {
   .top { gap: 10px; flex-wrap: wrap; height: auto; }
-  nav { order: 3; width: 100%; overflow-x: auto; }
+  nav { order: 3; width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   nav button { padding: 6px 14px; font-size: .95rem; }
   .brand-face { height: 32px; width: 32px; } .brand-name { height: 15px; }
   .hero { margin-top: 112px; }
