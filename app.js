@@ -598,10 +598,11 @@ async function openCanal(slug) {
 const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
 
 /* ---------- agenda esportiva ----------
-   O navegador pede a lista de eventos direto ao SuperFlix (uma chamada por abertura da aba,
-   com cache de 5 minutos, para respeitar o limite de requisições deles). Se o SuperFlix
-   limitar ou bloquear, usa o último resultado salvo e, por fim, o agenda.json do site.
-   Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de canal no player. */
+   O SuperFlix não libera a leitura da lista de eventos por outros sites (a resposta não tem
+   cabeçalho CORS), então o navegador não consegue pedir direto. Os eventos ficam em
+   agenda.json, gerado por tools/atualizar_agenda.py (python tools/atualizar_agenda.py --publicar
+   envia o arquivo ao GitHub). Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de
+   canal no player. */
 let agenda = null, stSel = '', spSel = '';
 const ST = { live: 'AO VIVO', upcoming: 'EM BREVE', finished: 'FINALIZADO' };
 const ST_ORDEM = { live: 0, upcoming: 1, finished: 2 };
@@ -616,51 +617,26 @@ function quando(d) {
   const hora = t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   return (dia === 0 ? 'Hoje' : dia === 1 ? 'Amanhã' : dia === -1 ? 'Ontem' : t.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' · ' + hora;
 }
-const LISTA_EVENTOS = 'https://superflixapi.fun/lista?category=eventos&format=json';
-const AG_CACHE = 'agenda_cache_v1';
-const ID_OK = /^[A-Za-z0-9_-]{1,120}$/;
-let agErro = '', agFonte = '', agUltima = 0;
-function compactaEvento(e) {
-  const id = e.public_slug || e.base_public_slug || e.slug || '';
-  if (!ID_OK.test(id)) return null;
-  const canais = (e.embeds || []).filter(m => m.type === 'channel' && /^[A-Za-z0-9_-]{1,60}$/.test(m.slug || '')).map(m => [m.provider || m.slug, m.slug, m.quality || '']);
-  return { i: id, t: e.title || id, st: e.status || 'upcoming', sp: e.category || '', c: e.competition || '', d: e.start_time || '', a: e.time1_name || '', b: e.time2_name || '', la: e.time1 || '', lb: e.time2 || '', el: e.event_logo || '', e: canais };
-}
-async function buscaDireta() {
-  const r = await fetch(LISTA_EVENTOS, { cache: 'no-store' });
-  if (r.status === 429) {
-    let s = 10;
-    try { s = (await r.json()).retry_after || 10; } catch {}
-    const err = new Error('limite'); err.limite = s; throw err;
-  }
-  if (!r.ok) throw new Error('http ' + r.status);
-  const j = await r.json();
-  if (!j || !Array.isArray(j.data)) throw new Error('formato');
-  return { gerado: new Date().toISOString(), eventos: j.data.map(compactaEvento).filter(Boolean) };
-}
-async function loadAgenda(forcar = false) {
-  agErro = '';
-  const cache = get(AG_CACHE, null);
-  if (!forcar && cache && Array.isArray(cache.eventos) && Date.now() - new Date(cache.gerado) < 5 * 60000) { agenda = cache; agFonte = 'cache'; return agenda; }
+let agUltima = 0;
+async function loadAgenda() {
   agUltima = Date.now();
-  try {
-    agenda = await buscaDireta(); agFonte = 'direto'; set(AG_CACHE, agenda);
-    return agenda;
-  } catch (e) {
-    agErro = e.limite ? 'o SuperFlix pediu para esperar ' + e.limite + 's (limite de requisições)' : 'o navegador não conseguiu ler a API do SuperFlix';
-  }
-  // plano B: último resultado salvo neste navegador, depois o agenda.json do site
-  if (cache && Array.isArray(cache.eventos)) { agenda = cache; agFonte = 'salva'; return agenda; }
   try {
     const r = await fetch('agenda.json?m=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
     if (!r.ok) throw new Error('sem agenda');
     const a = await r.json();
-    if (!a || !Array.isArray(a.eventos) || !a.gerado) throw new Error('vazia');
-    agenda = a; agFonte = 'arquivo';
-    return agenda;
-  } catch {}
-  agenda = { gerado: null, eventos: [] }; agFonte = '';
+    if (!a || !Array.isArray(a.eventos)) throw new Error('formato');
+    agenda = a;
+  } catch { agenda = { gerado: null, eventos: [] }; }
   return agenda;
+}
+// se o arquivo estiver velho, corrige o status pelo horário (ao vivo ~3 h depois do início)
+function statusEv(e, velha) {
+  if (!velha) return e.st;
+  const h = (Date.now() - dataEv(e.d)) / 3600000;
+  if (isNaN(h)) return e.st;
+  if (e.st === 'upcoming') return h < 0 ? 'upcoming' : h < 3 ? 'live' : 'finished';
+  if (e.st === 'live') return h > 4 ? 'finished' : 'live';
+  return e.st;
 }
 function chipsDe(box, itens, atual, onPick) {
   box.innerHTML = '';
@@ -672,30 +648,31 @@ function chipsDe(box, itens, atual, onPick) {
     box.appendChild(b);
   });
 }
-async function renderAgenda(forcar = false) {
+async function renderAgenda() {
   $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
-  await loadAgenda(forcar);
+  await loadAgenda();
   const cont = {};
   agenda.eventos.forEach(e => cont[e.sp] = (cont[e.sp] || 0) + 1);
-  $('agRefresh').onclick = () => { if (Date.now() - agUltima > 10000) renderAgenda(true); };
+  $('agRefresh').onclick = () => { if (Date.now() - agUltima > 10000) renderAgenda(); };
   chipsDe($('stChips'), [['', 'Todos'], ['live', 'Ao vivo'], ['upcoming', 'Em breve'], ['finished', 'Finalizado']], stSel, v => stSel = v);
   chipsDe($('spChips'), [['', 'Todas as modalidades'], ...Object.keys(cont).sort((a, b) => cont[b] - cont[a]).map(k => [k, k])], spSel, v => spSel = v);
   renderAgList();
 }
 function renderAgList() {
-  const lista = agenda.eventos
+  const min = agenda.gerado ? Math.round((Date.now() - new Date(agenda.gerado)) / 60000) : null;
+  const velha = min !== null && min > 30;
+  const todos = agenda.eventos.map(e => ({ ...e, st: statusEv(e, velha) }));
+  const lista = todos
     .filter(e => (!stSel || e.st === stSel) && (!spSel || e.sp === spSel))
     .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
   const box = $('aglist');
   box.innerHTML = '';
-  const origem = { direto: 'Direto do SuperFlix', cache: 'Direto do SuperFlix', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda salva no site' }[agFonte] || '';
-  if (!agenda.gerado) {
-    $('agMeta').textContent = 'Não consegui carregar a agenda: ' + (agErro || 'sem dados') + '. Toque em Atualizar daqui a alguns segundos.';
-  } else {
-    const min = Math.round((Date.now() - new Date(agenda.gerado)) / 60000);
-    $('agMeta').textContent = origem + ' · atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : 'há ' + Math.round(min / 60) + ' h')
-      + (agErro ? ' · ' + agErro : '') + (min > 360 ? ' · pode estar desatualizada' : '') + ' · horários no seu fuso';
-  }
+  // no PC o servidor local atualiza sozinho; no site do GitHub quem publica é o dono, pelo script
+  const emLocal = ['localhost', '127.0.0.1', '[::1]', ''].includes(location.hostname);
+  const como = emLocal ? 'rode python servidor.py (ou python tools/atualizar_agenda.py)' : 'no PC, rode python tools/atualizar_agenda.py --publicar';
+  if (min === null) $('agMeta').textContent = 'A agenda ainda não foi publicada: ' + como + '.';
+  else $('agMeta').textContent = 'Atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
+    + (velha ? ' · status ajustado pelo horário; para atualizar, ' + como : '') + ' · horários no seu fuso';
   lista.forEach(e => {
     const d = document.createElement('div');
     d.className = 'ev';
