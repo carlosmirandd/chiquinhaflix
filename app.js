@@ -649,10 +649,13 @@ function renderAgList() {
     .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
   const box = $('aglist');
   box.innerHTML = '';
-  if (!agenda.gerado) $('agMeta').textContent = 'A agenda ainda não foi gerada. Rode: python tools/atualizar_agenda.py';
+  // no PC o servidor local atualiza sozinho; no site do GitHub quem publica é o dono, pelo script
+  const emLocal = ['localhost', '127.0.0.1', '[::1]', ''].includes(location.hostname);
+  const como = emLocal ? 'rode python servidor.py (ou python tools/atualizar_agenda.py)' : 'no PC, rode python tools/atualizar_agenda.py --publicar';
+  if (!agenda.gerado) $('agMeta').textContent = 'A agenda ainda não foi gerada: ' + como + '.';
   else {
     const min = Math.round((Date.now() - new Date(agenda.gerado)) / 60000);
-    $('agMeta').textContent = 'Atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : 'há ' + Math.round(min / 60) + ' h') + (min > 360 ? ' · pode estar desatualizada' : '') + ' · horários no seu fuso';
+    $('agMeta').textContent = 'Atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : 'há ' + Math.round(min / 60) + ' h') + (min > 360 ? ' · pode estar desatualizada: ' + como : '') + ' · horários no seu fuso';
   }
   lista.forEach(e => {
     const d = document.createElement('div');

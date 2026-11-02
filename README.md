@@ -56,10 +56,16 @@ Como a TVMaze não exige chave, **não há nenhum segredo no código**. O reposi
 
 - O SuperFlix não libera a leitura da lista por outros sites (CORS), então a lista de canais é um **retrato** salvo em `canais.json`, com nome, endereço do canal e categorias. Canais novos ou removidos só aparecem quando esse arquivo for atualizado. Os logos vêm direto do SuperFlix.
 - A **agenda** é montada pelo próprio app a partir do `agenda.json`. Como a agenda muda todo dia e o navegador não pode ler a API do SuperFlix, esse arquivo precisa ser gerado de tempos em tempos:
-  - **No computador (recomendado):** rode `python servidor.py` em vez de abrir o `index.html`. Esse servidor local atualiza a agenda sozinho quando o app a pede (no máximo a cada 5 minutos).
-  - **Manualmente:** `python tools/atualizar_agenda.py` gera o `agenda.json` (use `--force` para ignorar o intervalo mínimo).
-  - O SuperFlix limita as requisições. O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço.
-  - No site publicado no GitHub Pages, o `agenda.json` é um arquivo estático: ele só mostra eventos se alguém gerar e enviar o arquivo atualizado. Enquanto estiver vazio, a aba mostra "A agenda ainda não foi gerada".
+  - **No computador:** rode `python servidor.py` em vez de abrir o `index.html`. Esse servidor local atualiza a agenda sozinho quando o app a pede (no máximo a cada 5 minutos).
+  - **No site do GitHub Pages:** o `agenda.json` é um arquivo estático, então quem atualiza é você, no PC, quando quiser reabrir o site com a agenda em dia:
+
+    ```bash
+    python tools/atualizar_agenda.py --publicar
+    ```
+
+    O comando gera o `agenda.json` e já faz o `git add`, o `commit` e o `push` só desse arquivo. O Pages leva alguns minutos para mostrar a versão nova. Enquanto ninguém publicar, a aba mostra a data da última atualização e como atualizar.
+  - **Só gerar o arquivo:** `python tools/atualizar_agenda.py` (use `--force` para ignorar o intervalo mínimo de 5 minutos).
+  - O SuperFlix limita as requisições. O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. Não há automação (GitHub Actions) de propósito.
 - Os canais da categoria **Adulto** (11 canais, a maioria de conteúdo explícito) ficam fora de "Todos" e das outras categorias. Eles só aparecem no chip **18+**, depois de uma confirmação de idade guardada no seu navegador (`localStorage`). O Adult Swim, por exemplo, é um canal de séries e desenhos e aparece normalmente.
 
 ### Sobre a tradução

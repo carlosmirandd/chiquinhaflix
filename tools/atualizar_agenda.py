@@ -5,8 +5,10 @@ O navegador não consegue ler essa API direto (CORS), então este script faz a
 chamada pelo servidor e salva só os campos que o app usa.
 
 Uso:
-    python tools/atualizar_agenda.py            # atualiza (no máximo a cada 5 min)
-    python tools/atualizar_agenda.py --force    # ignora o intervalo mínimo
+    python tools/atualizar_agenda.py                    # atualiza (no máximo a cada 5 min)
+    python tools/atualizar_agenda.py --force            # ignora o intervalo mínimo
+    python tools/atualizar_agenda.py --publicar         # atualiza e envia o agenda.json ao GitHub
+                                                        # (para o site do Pages mostrar a agenda)
 
 Cuidado com o limite de requisições do SuperFlix: o script faz UMA chamada e,
 se levar "429 Muitas requisições", espera o tempo que o servidor pediu e tenta
@@ -15,6 +17,7 @@ mais uma vez. Se falhar de novo, ele para e mantém o agenda.json antigo.
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -108,7 +111,25 @@ def atualizar(forcar=False):
     return True, "%d eventos salvos em agenda.json" % len(eventos)
 
 
+def publicar():
+    """Envia o agenda.json para o GitHub, para o site do Pages usar a agenda nova."""
+    def git(*args):
+        return subprocess.run(["git", "-C", RAIZ, *args], capture_output=True, text=True)
+
+    if git("status", "--porcelain", "agenda.json").stdout.strip() == "":
+        return True, "agenda.json já está igual ao do GitHub; nada para publicar"
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    for passo in (("add", "agenda.json"), ("commit", "-m", "Atualiza agenda (" + agora + ")"), ("push",)):
+        r = git(*passo)
+        if r.returncode != 0:
+            return False, "git %s falhou: %s" % (passo[0], (r.stderr or r.stdout).strip())
+    return True, "agenda.json publicado no GitHub (o Pages leva alguns minutos para atualizar)"
+
+
 if __name__ == "__main__":
     ok, msg = atualizar("--force" in sys.argv)
     print(msg)
+    if ok and "--publicar" in sys.argv:
+        ok, msg = publicar()
+        print(msg)
     sys.exit(0 if ok else 2)
