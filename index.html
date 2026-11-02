@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChiquinhaFlix</title>
+<link rel="icon" href="assets/logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Login (só pra dar nome, sem senha) -->
+<section id="login" class="screen login" hidden>
+  <img src="assets/logo.png" alt="ChiquinhaFlix" class="login-logo">
+  <h1>Faça Login</h1>
+  <input id="nome" type="text" placeholder="Nome de usuário" maxlength="30" autocomplete="off">
+  <button class="btn pri" id="entrar">Entrar</button>
+  <p class="hint">Sem senha e sem servidor: o nome fica salvo só no seu navegador.</p>
+</section>
+
+<!-- App -->
+<div id="app" hidden>
+  <header>
+    <div class="top">
+      <img src="assets/logo.png" alt="" class="mini-logo" id="logo">
+      <nav id="nav">
+        <button data-t="populares" class="on">Populares</button>
+        <button data-t="hoje">No ar hoje</button>
+        <button data-t="favoritos">⭐ Favoritos</button>
+        <button data-t="historico">Histórico</button>
+      </nav>
+      <input id="q" type="search" placeholder="Buscar série...">
+      <button class="btn" id="sair" title="Sair">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="catalog">
+      <p class="welcome" id="welcome"></p>
+      <div class="chips" id="chips"></div>
+      <h2 id="title"></h2>
+      <div class="grid" id="grid"></div>
+      <div class="center" id="msg"></div>
+    </div>
+
+    <div id="view" hidden>
+      <button class="btn" id="back">← Voltar</button>
+      <div class="player" id="player"></div>
+      <div class="info">
+        <h1 id="vTitle"></h1>
+        <button class="btn star" id="fav" title="Favoritar">☆</button>
+        <select id="season"></select>
+        <button class="btn" id="prev">← Anterior</button>
+        <button class="btn" id="next">Próximo →</button>
+      </div>
+      <p class="epname" id="epName"></p>
+      <div class="eps" id="eps"></div>
+      <p class="sinopse" id="vSin"></p>
+    </div>
+  </main>
+
+  <footer>
+    <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros.</p>
+    <p>Dados de séries via <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener">TVMaze</a> (CC BY-SA).</p>
+  </footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
