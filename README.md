@@ -2,6 +2,12 @@
 
 > Um visualizador de séries pessoal, feito por diversão. Evolução de um projetinho do ensino médio.
 
+**🔗 Online:** https://carlosmirandd.space/chiquinhaflix/
+
+| Login | Catálogo |
+|---|---|
+| ![Tela de login](docs/login.jpg) | ![Catálogo de séries populares](docs/catalogo.jpg) |
+
 ## O contexto
 
 O **ChiquinhaFlix** nasceu em **março de 2023**, num trabalho em grupo da disciplina de *Apps II* (6º período do ensino médio): um app em React Native, rodando no Expo Snack, com tela de login, um filme de exemplo e uma estrelinha de favorito. Era a época em que ainda programávamos sem IA, e o resultado era charmoso do jeito que só projeto de escola consegue ser.
@@ -47,7 +53,7 @@ Este é um **projeto pessoal, educacional e sem fins lucrativos**.
 
 - Este repositório **não hospeda, não armazena e não distribui nenhum vídeo**. Ele só exibe um `iframe` apontando para um serviço de terceiros.
 - Não tenho controle sobre o conteúdo desse serviço, nem garantias sobre a licença dos vídeos que ele serve. **Cada pessoa é responsável pelo que acessa** e deve respeitar a legislação de direitos autorais do seu país.
-- O player pode exibir uma verificação da Cloudflare (anti-bot) ou ficar indisponível a qualquer momento. Isso depende só do serviço de terceiros.
+- O serviço de terceiros **libera o embed só para domínios autorizados**. Em domínios não autorizados (incluindo `localhost`), o player mostra "Embed não disponível aqui" em vez do vídeo. Ele também pode exibir uma verificação da Cloudflare (anti-bot) ou ficar indisponível a qualquer momento. Nada disso depende deste código: o catálogo, a busca, os favoritos e o histórico funcionam normalmente mesmo sem o vídeo.
 
 ## Créditos
 
