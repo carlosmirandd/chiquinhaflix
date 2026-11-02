@@ -48,24 +48,16 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 | Sinopses e nomes de episódio em português | Tradução automática (veja abaixo) |
 | Vídeo das séries | `iframe` (embed) de um serviço de terceiros, o [SuperFlixAPI](https://superflixapi.fun/doc), aberto pelo ID do IMDb da série |
 | Canais ao vivo | Lista própria em `canais.json` (um retrato da página de canais do SuperFlix) e player `https://superflixapi.fun/canal/{canal}` |
-| Agenda esportiva | `agenda.json`, gerado por `tools/atualizar_agenda.py` a partir da lista de eventos do SuperFlix; cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
+| Agenda esportiva | Lista de eventos pedida **direto do navegador** à API do SuperFlix (`/lista?category=eventos`); cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}`. Plano B: `agenda.json` |
 
 Como a TVMaze não exige chave, **não há nenhum segredo no código**. O repositório é seguro para ser público e qualquer pessoa pode clonar e usar. Séries que a TVMaze não associa a um ID do IMDb ficam de fora, porque o player não consegue abri-las.
 
 ### Sobre os canais e a agenda
 
 - O SuperFlix não libera a leitura da lista por outros sites (CORS), então a lista de canais é um **retrato** salvo em `canais.json`, com nome, endereço do canal e categorias. Canais novos ou removidos só aparecem quando esse arquivo for atualizado. Os logos vêm direto do SuperFlix.
-- A **agenda** é montada pelo próprio app a partir do `agenda.json`. Como a agenda muda todo dia e o navegador não pode ler a API do SuperFlix, esse arquivo precisa ser gerado de tempos em tempos:
-  - **No computador:** rode `python servidor.py` em vez de abrir o `index.html`. Esse servidor local atualiza a agenda sozinho quando o app a pede (no máximo a cada 5 minutos).
-  - **No site do GitHub Pages:** o `agenda.json` é um arquivo estático, então quem atualiza é você, no PC, quando quiser reabrir o site com a agenda em dia:
-
-    ```bash
-    python tools/atualizar_agenda.py --publicar
-    ```
-
-    O comando gera o `agenda.json` e já faz o `git add`, o `commit` e o `push` só desse arquivo. O Pages leva alguns minutos para mostrar a versão nova. Enquanto ninguém publicar, a aba mostra a data da última atualização e como atualizar.
-  - **Só gerar o arquivo:** `python tools/atualizar_agenda.py` (use `--force` para ignorar o intervalo mínimo de 5 minutos).
-  - O SuperFlix limita as requisições. O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. Não há automação (GitHub Actions) de propósito.
+- A **agenda** é montada pelo próprio app. Ao abrir a aba, o navegador pede a lista de eventos direto ao SuperFlix, **uma chamada por abertura**, com cache de 5 minutos e um botão **Atualizar** (que só vale a cada 10 segundos). O SuperFlix limita as requisições **por IP**, então quem acessa o site de outro computador não é afetado pelo limite de quem testou muito.
+- Se o SuperFlix limitar (429) ou não liberar a leitura pelo navegador (CORS), o app usa, nesta ordem: a **última agenda salva no próprio navegador** e o **`agenda.json`** do site. A tela diz de onde vieram os dados e há quanto tempo.
+- O `agenda.json` é opcional, só um plano B. Para gerá-lo: `python tools/atualizar_agenda.py` (e `--publicar` para enviar ao GitHub). O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. `python servidor.py` abre o app local e atualiza esse arquivo sozinho, no máximo a cada 5 minutos. Não há automação (GitHub Actions) de propósito.
 - Os canais da categoria **Adulto** (11 canais, a maioria de conteúdo explícito) ficam fora de "Todos" e das outras categorias. Eles só aparecem no chip **18+**, depois de uma confirmação de idade guardada no seu navegador (`localStorage`). O Adult Swim, por exemplo, é um canal de séries e desenhos e aparece normalmente.
 
 ### Sobre a tradução
@@ -80,15 +72,15 @@ Isso significa que **os textos das sinopses (dados públicos de séries) são en
 
 ## Como rodar
 
-É um site estático. Para ter também a **agenda atualizada**, use o servidor local (só precisa do Python 3):
+É um site estático. Sirva a pasta com o Python 3:
 
 ```bash
-python servidor.py
+python -m http.server 8000
 ```
 
-Depois acesse `http://localhost:8000`. Com `python servidor.py --lan`, o celular na mesma rede Wi-Fi também consegue abrir o app pelo IP do computador.
+Depois acesse `http://localhost:8000`.
 
-Se você só quer o catálogo e os canais, também dá pra servir a pasta com `python -m http.server 8000` ou abrir o `index.html` direto.
+Opcional: `python servidor.py` faz a mesma coisa e ainda mantém o `agenda.json` (plano B da agenda) atualizado. Com `python servidor.py --lan`, o celular na mesma rede Wi-Fi também consegue abrir o app pelo IP do computador.
 
 ## Aviso importante
 
@@ -114,8 +106,8 @@ index.html   → telas (início, lista, ao vivo, player, detalhes, barra inferio
 style.css    → visual (desktop e celular)
 app.js       → lógica (TVMaze, tradução, canais, player, minha lista, histórico)
 canais.json  → lista de canais ao vivo (retrato do SuperFlix)
-agenda.json  → eventos da agenda esportiva (gerado pelo script)
-servidor.py  → servidor local que atualiza a agenda sozinho
+agenda.json  → plano B da agenda esportiva (gerado pelo script, opcional)
+servidor.py  → servidor local opcional que mantém o agenda.json atualizado
 tools/       → atualizar_agenda.py
 assets/      → logo (rosto e nome recortados do original)
 docs/        → prints usados neste README
