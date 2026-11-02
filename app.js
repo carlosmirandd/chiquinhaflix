@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const API = 'https://api.tvmaze.com';
 const PLAYER = 'https://superflixapi.fun/serie/';
 const CANAL = 'https://superflixapi.fun/canal/';
-const AGENDA = 'https://superflixapi.fun/agenda';
+const EVENTO = 'https://superflixapi.fun/eventos/';
 
 /* ---------- storage ---------- */
 const get = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -151,7 +151,9 @@ async function ensurePage() {
 async function route() {
   const m = location.hash.match(/^#(serie|ver)=(\d+)$/);
   const cn = location.hash.match(/^#canal=([A-Za-z0-9_-]{1,60})$/);
+  const ev = location.hash.match(/^#evento=([A-Za-z0-9_-]{1,120})$/);
   if (cn) { closeModal(); return openCanal(cn[1]); }
+  if (ev) { closeModal(); return openEvento(ev[1]); }
   if (m && m[1] === 'ver') { closeModal(); return openPlayer(+m[2]); }
   await ensurePage();
   if (m) openModal(+m[2]); else closeModal();
@@ -446,7 +448,7 @@ $('mShare').onclick = async () => {
 
 /* ---------- player ---------- */
 async function openPlayer(id) {
-  only('view'); $('view').classList.remove('canal'); window.scrollTo(0, 0);
+  only('view'); $('view').classList.remove('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('eps').innerHTML = ''; $('epName').textContent = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -517,7 +519,7 @@ function setSeg(v) {
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.v === vivoTab));
   $('canaisBox').hidden = vivoTab !== 'canais';
   $('agendaBox').hidden = vivoTab !== 'agenda';
-  if (vivoTab === 'agenda' && !$('agendaFrame').getAttribute('src')) $('agendaFrame').setAttribute('src', AGENDA);
+  if (vivoTab === 'agenda') renderAgenda();
 }
 $('seg').onclick = e => { const b = e.target.closest('button'); if (b) { setSeg(b.dataset.v); window.scrollTo(0, 0); } };
 $('qc').oninput = () => { qcanal = $('qc').value.trim(); renderCanais(); };
@@ -582,14 +584,112 @@ async function renderVivo() {
 }
 
 async function openCanal(slug) {
-  only('view'); $('view').classList.add('canal'); window.scrollTo(0, 0);
+  only('view'); $('view').classList.add('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
   let lista = [];
   try { lista = await loadCanais(); } catch {}
   const c = lista.find(x => x.s === slug);
   $('vTitle').textContent = c ? c.n : slug;
   $('epName').textContent = c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo';
   // slug validado pelo regex da rota (letras, números, _ e -)
-  $('player').innerHTML = '<iframe src="' + CANAL + slug + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
+  $('player').innerHTML = embed(CANAL + slug);
+}
+
+// iframe do player; a URL sempre é montada com um prefixo fixo e um identificador validado
+const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
+
+/* ---------- agenda esportiva ----------
+   Os eventos ficam em agenda.json, gerado por tools/atualizar_agenda.py (o SuperFlix não
+   libera leitura direta pelo navegador). Cada evento abre pelo embed /eventos/{id}, e dá
+   pra trocar de canal na tela do player. */
+let agenda = null, stSel = '', spSel = '';
+const ST = { live: 'AO VIVO', upcoming: 'EM BREVE', finished: 'FINALIZADO' };
+const ST_ORDEM = { live: 0, upcoming: 1, finished: 2 };
+const logoOk = u => typeof u === 'string' && /^https:\/\/superflixapi\.fun\//.test(u);
+// os horários do SuperFlix são de Brasília (UTC-3)
+const dataEv = d => new Date(String(d).replace(' ', 'T') + '-03:00');
+function quando(d) {
+  const t = dataEv(d);
+  if (isNaN(t)) return '';
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  const dia = Math.round((new Date(t).setHours(0, 0, 0, 0) - hoje0) / 86400000);
+  const hora = t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return (dia === 0 ? 'Hoje' : dia === 1 ? 'Amanhã' : dia === -1 ? 'Ontem' : t.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' · ' + hora;
+}
+async function loadAgenda() {
+  try {
+    const r = await fetch('agenda.json?m=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
+    if (!r.ok) throw new Error('sem agenda');
+    agenda = await r.json();
+    if (!agenda || !Array.isArray(agenda.eventos)) throw new Error('formato');
+  } catch { agenda = { gerado: null, eventos: [] }; }
+  return agenda;
+}
+function chipsDe(box, itens, atual, onPick) {
+  box.innerHTML = '';
+  itens.forEach(([v, rotulo]) => {
+    const b = document.createElement('button');
+    b.textContent = rotulo;
+    if (v === atual) b.className = 'on';
+    b.onclick = () => { onPick(v); [...box.children].forEach(x => x.classList.toggle('on', x === b)); renderAgList(); };
+    box.appendChild(b);
+  });
+}
+async function renderAgenda() {
+  $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
+  await loadAgenda();
+  const cont = {};
+  agenda.eventos.forEach(e => cont[e.sp] = (cont[e.sp] || 0) + 1);
+  chipsDe($('stChips'), [['', 'Todos'], ['live', 'Ao vivo'], ['upcoming', 'Em breve'], ['finished', 'Finalizado']], stSel, v => stSel = v);
+  chipsDe($('spChips'), [['', 'Todas as modalidades'], ...Object.keys(cont).sort((a, b) => cont[b] - cont[a]).map(k => [k, k])], spSel, v => spSel = v);
+  renderAgList();
+}
+function renderAgList() {
+  const lista = agenda.eventos
+    .filter(e => (!stSel || e.st === stSel) && (!spSel || e.sp === spSel))
+    .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
+  const box = $('aglist');
+  box.innerHTML = '';
+  if (!agenda.gerado) $('agMeta').textContent = 'A agenda ainda não foi gerada. Rode: python tools/atualizar_agenda.py';
+  else {
+    const min = Math.round((Date.now() - new Date(agenda.gerado)) / 60000);
+    $('agMeta').textContent = 'Atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : 'há ' + Math.round(min / 60) + ' h') + (min > 360 ? ' · pode estar desatualizada' : '') + ' · horários no seu fuso';
+  }
+  lista.forEach(e => {
+    const d = document.createElement('div');
+    d.className = 'ev';
+    const logos = (logoOk(e.la) && logoOk(e.lb))
+      ? '<img src="' + esc(e.la) + '" alt=""><span>x</span><img src="' + esc(e.lb) + '" alt="">'
+      : logoOk(e.el) ? '<img src="' + esc(e.el) + '" alt="">' : '<span class="sp">' + esc((e.sp || '?').slice(0, 3).toUpperCase()) + '</span>';
+    d.innerHTML = '<div class="ev-logos">' + logos + '</div>'
+      + '<div class="ev-info"><span class="stb ' + esc(e.st) + '">' + esc(ST[e.st] || e.st) + '</span><b>' + esc(e.t) + '</b>'
+      + '<small>' + esc([e.sp, e.c].filter(Boolean).join(' · ')) + '</small>'
+      + '<small>' + esc(quando(e.d)) + ' · ' + (e.e ? e.e.length : 0) + ((e.e ? e.e.length : 0) === 1 ? ' canal' : ' canais') + '</small></div><span class="go">▶</span>';
+    d.querySelectorAll('img').forEach(i => { i.referrerPolicy = 'no-referrer'; i.onerror = () => i.remove(); });
+    d.onclick = () => { location.hash = '#evento=' + e.i; };
+    box.appendChild(d);
+  });
+  if (!lista.length && agenda.gerado) box.innerHTML = '<p class="agmeta">Nenhum evento nesse filtro.</p>';
+}
+
+async function openEvento(slug) {
+  only('view'); $('view').classList.add('canal'); window.scrollTo(0, 0);
+  if (!agenda) await loadAgenda();
+  const e = agenda.eventos.find(x => x.i === slug);
+  $('vTitle').textContent = e ? e.t : slug;
+  $('epName').textContent = e ? [e.sp, e.c, quando(e.d)].filter(Boolean).join(' · ') : 'Evento';
+  const box = $('evch');
+  box.innerHTML = '';
+  const tocar = (url, btn) => { $('player').innerHTML = embed(url); [...box.children].forEach(x => x.classList.toggle('on', x === btn)); };
+  const itens = [['Evento (todos os canais)', EVENTO + slug]];
+  (e && e.e ? e.e : []).forEach(([nome, cs, q]) => { if (/^[A-Za-z0-9_-]{1,60}$/.test(cs)) itens.push([nome + (q ? ' · ' + q : ''), CANAL + cs]); });
+  itens.forEach(([rotulo, url]) => {
+    const b = document.createElement('button');
+    b.textContent = rotulo;
+    b.onclick = () => tocar(url, b);
+    box.appendChild(b);
+  });
+  box.hidden = itens.length < 2;
+  tocar(itens[0][1], box.firstChild);
 }
 
 route();

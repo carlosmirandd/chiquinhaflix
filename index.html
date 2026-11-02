@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <title>ChiquinhaFlix</title>
 <link rel="icon" href="assets/chiquinha.png">
-<link rel="stylesheet" href="style.css?v=202611021841">
+<link rel="stylesheet" href="style.css?v=202611021900">
 </head>
 <body>
 
@@ -74,8 +74,10 @@
     <div class="chgrid" id="chgrid"></div>
   </div>
   <div id="agendaBox" hidden>
-    <iframe id="agendaFrame" title="Agenda esportiva" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *" allowfullscreen></iframe>
-    <p class="ext"><a href="https://superflixapi.fun/agenda" target="_blank" rel="noopener">Abrir a agenda em outra aba</a></p>
+    <div class="chips2" id="stChips"></div>
+    <div class="chips2" id="spChips"></div>
+    <p class="agmeta" id="agMeta"></p>
+    <div class="aglist" id="aglist"></div>
   </div>
 </section>
 
@@ -90,6 +92,7 @@
       <button class="pill grey small" id="next">Próximo ⏭</button>
     </span>
   </div>
+  <div class="evch" id="evch" hidden></div>
   <h1 class="vtitle" id="vTitle"></h1>
   <div class="eps-head"><h2>Episódios</h2><select id="season"></select></div>
   <div class="eps" id="eps"></div>
@@ -152,6 +155,6 @@
   </div>
 </div>
 
-<script src="app.js?v=202611021841"></script>
+<script src="app.js?v=202611021900"></script>
 </body>
 </html>

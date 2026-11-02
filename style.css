@@ -178,8 +178,25 @@ footer p { margin: 4px 0; }
 .ch .live { position: absolute; top: 8px; left: 8px; background: var(--red); font-size: .62rem; font-weight: 800; letter-spacing: .5px; border-radius: 4px; padding: 2px 6px; }
 .ch p { margin: 7px 2px 0; font-size: .92rem; font-weight: 700; }
 .ch small { display: block; color: var(--mut); font-weight: 400; font-size: .75rem; margin-top: 2px; }
-#agendaBox iframe { width: 100%; height: calc(100vh - 190px); min-height: 480px; border: 0; border-radius: 10px; background: #000; display: block; }
-#agendaBox .ext { margin: 10px 2px 0; font-size: .8rem; }
+/* agenda */
+.agmeta { color: var(--mut); font-size: .85rem; margin: 4px 2px 14px; }
+.aglist { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.ev { display: flex; align-items: center; gap: 14px; background: #1f1f24; border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.ev:hover { background: #2a2a31; }
+.ev-logos { flex: 0 0 96px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ev-logos img { width: 38px; height: 38px; object-fit: contain; }
+.ev-logos span { color: var(--mut); font-size: .8rem; }
+.ev-logos .sp { font-weight: 800; font-size: 1rem; color: #fff; }
+.ev-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ev-info b { font-size: 1rem; }
+.ev-info small { color: var(--mut); font-size: .78rem; }
+.stb { align-self: flex-start; font-size: .62rem; font-weight: 800; letter-spacing: .5px; border-radius: 4px; padding: 2px 7px; background: #3a3a40; }
+.stb.live { background: var(--red); }
+.stb.upcoming { background: #f5c518; color: #000; }
+.ev .go { flex: 0 0 auto; width: 38px; height: 38px; border: 2px solid #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .8rem; }
+.evch { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.evch button { background: rgba(255,255,255,.08); border: 1.5px solid rgba(255,255,255,.2); color: #ddd; border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.evch button.on { background: #fff; color: #000; border-color: #fff; }
 #view.canal .eps-head, #view.canal #eps, #view.canal #prev, #view.canal #next { display: none; }
 
 /* ================= CELULAR: igual ao app ================= */
@@ -295,5 +312,6 @@ footer p { margin: 4px 0; }
   .qc { max-width: none; }
   .chgrid { grid-template-columns: repeat(2, 1fr); gap: 12px 8px; }
   .ch .box { padding: 10px; }
-  #agendaBox iframe { height: calc(100vh - 215px); border-radius: 8px; }
+    .aglist { grid-template-columns: 1fr; }
+  .ev-logos { flex-basis: 84px; }
 }
