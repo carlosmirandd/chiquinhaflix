@@ -36,6 +36,7 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 - **Detalhes** com elenco, gêneros, status, "Continuar" e lista de episódios por temporada. Os já vistos ganham a barra vermelha.
 - Player com seletor de **temporada** e **episódio**, anterior/próximo (passam sozinhos para a temporada seguinte).
 - **Minha lista** e **histórico**, guardados no `localStorage`. Nada sai da sua máquina.
+- **Miniplayer**: ao sair da tela de um canal, evento ou episódio, o vídeo continua num player flutuante (sem recarregar), com um botão para voltar à tela do player e outro para fechar. Na tela do player há também "Parar e sair".
 - **Ao vivo**: lista de **canais** (com busca e categorias) e **agenda esportiva** (eventos ao vivo, em breve e finalizados, com troca de canal), tudo aberto pelo embed do SuperFlix. Os canais de conteúdo adulto ficam escondidos atrás do chip **18+**, que pede confirmação (veja abaixo).
 - **Textos em português** (veja abaixo).
 
@@ -48,23 +49,18 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 | Sinopses e nomes de episódio em português | Tradução automática (veja abaixo) |
 | Vídeo das séries | `iframe` (embed) de um serviço de terceiros, o [SuperFlixAPI](https://superflixapi.fun/doc), aberto pelo ID do IMDb da série |
 | Canais ao vivo | Lista própria em `canais.json` (um retrato da página de canais do SuperFlix) e player `https://superflixapi.fun/canal/{canal}` |
-| Agenda esportiva | `agenda.json`, gerado por `tools/atualizar_agenda.py` a partir da lista de eventos do SuperFlix; cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
+| Agenda esportiva | Lista de eventos do SuperFlix pedida por um **proxy CORS público de terceiros**; plano B: `agenda.json`. Cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
 
 Como a TVMaze não exige chave, **não há nenhum segredo no código**. O repositório é seguro para ser público e qualquer pessoa pode clonar e usar. Séries que a TVMaze não associa a um ID do IMDb ficam de fora, porque o player não consegue abri-las.
 
 ### Sobre os canais e a agenda
 
 - O SuperFlix não libera a leitura da lista por outros sites (CORS), então a lista de canais é um **retrato** salvo em `canais.json`, com nome, endereço do canal e categorias. Canais novos ou removidos só aparecem quando esse arquivo for atualizado. Os logos vêm direto do SuperFlix.
-- A **agenda** é montada pelo próprio app a partir do `agenda.json`. O navegador **não consegue** pedir a lista de eventos direto ao SuperFlix: a resposta dele não traz o cabeçalho CORS (`access-control-allow-origin`), então qualquer site é bloqueado. Por isso o arquivo é gerado por fora e publicado junto com o site.
-- Para atualizar a agenda, no PC:
-
-  ```bash
-  python tools/atualizar_agenda.py --publicar
-  ```
-
-  O comando gera o `agenda.json` e já faz o `git add`, o `commit` e o `push` só desse arquivo. O Pages leva alguns minutos para mostrar a versão nova. `python servidor.py` abre o app local e mantém o arquivo atualizado sozinho (no máximo a cada 5 minutos).
-- O SuperFlix limita as requisições. O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. Não há automação (GitHub Actions) nem proxy de terceiros de propósito.
-- Se o arquivo estiver velho, a tela avisa e ajusta o status pelo horário do jogo (por exemplo, um jogo que começou há mais de 3 horas passa a "Finalizado").
+- A **agenda** é montada pelo próprio app. A API de eventos do SuperFlix **não manda o cabeçalho CORS** (`access-control-allow-origin`), então o navegador não consegue lê-la direto. Por isso o app pede a lista por **proxies CORS públicos de terceiros** (`allorigins.win`, `codetabs.com` e `corsproxy.io`, um por vez, no máximo 3 chamadas por abertura da aba), com cache de 5 minutos e um botão **Atualizar** (só vale a cada 10 segundos).
+- Se nenhum proxy responder, o app usa, nesta ordem: a **última agenda salva no próprio navegador** e o **`agenda.json`** do site. A tela diz de onde vieram os dados e há quanto tempo.
+- **Privacidade e confiança:** o proxy enxerga a chamada (o endereço da lista de eventos e o seu IP). Nenhum dado pessoal é enviado, mas é um serviço de terceiros que pode cair, mudar ou ser bloqueado, e você deve confiar nele só para dados públicos como este.
+- O `agenda.json` é o plano B. Para gerá-lo e publicá-lo, no PC: `python tools/atualizar_agenda.py --publicar` (gera o arquivo e faz `add`, `commit` e `push` só dele). O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. `python servidor.py` abre o app local e mantém o arquivo atualizado (no máximo a cada 5 minutos). Não há automação (GitHub Actions) de propósito.
+- Se os dados estiverem velhos, a tela avisa e ajusta o status pelo horário do jogo (por exemplo, um jogo que começou há mais de 3 horas passa a "Finalizado").
 - Os canais da categoria **Adulto** (11 canais, a maioria de conteúdo explícito) ficam fora de "Todos" e das outras categorias. Eles só aparecem no chip **18+**, depois de uma confirmação de idade guardada no seu navegador (`localStorage`). O Adult Swim, por exemplo, é um canal de séries e desenhos e aparece normalmente.
 
 ### Sobre a tradução
@@ -113,7 +109,7 @@ index.html   → telas (início, lista, ao vivo, player, detalhes, barra inferio
 style.css    → visual (desktop e celular)
 app.js       → lógica (TVMaze, tradução, canais, player, minha lista, histórico)
 canais.json  → lista de canais ao vivo (retrato do SuperFlix)
-agenda.json  → eventos da agenda esportiva (gerado pelo script)
+agenda.json  → plano B da agenda esportiva (gerado pelo script)
 servidor.py  → servidor local opcional que mantém o agenda.json atualizado
 tools/       → atualizar_agenda.py
 assets/      → logo (rosto e nome recortados do original)

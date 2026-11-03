@@ -148,7 +148,7 @@ async function ensurePage() {
   if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : under === 'vivo' ? renderVivo() : renderGrid()); }
   else only(under);
 }
-async function route() {
+async function rotear() {
   const m = location.hash.match(/^#(serie|ver)=(\d+)$/);
   const cn = location.hash.match(/^#canal=([A-Za-z0-9_-]{1,60})$/);
   const ev = location.hash.match(/^#evento=([A-Za-z0-9_-]{1,120})$/);
@@ -158,7 +158,9 @@ async function route() {
   await ensurePage();
   if (m) openModal(+m[2]); else closeModal();
 }
+async function route() { await rotear(); place(); requestAnimationFrame(place); setTimeout(place, 400); }
 window.addEventListener('hashchange', route);
+window.addEventListener('resize', () => place());
 const go = () => { if (location.hash) location.hash = ''; else route(); };
 
 function navClick(e) {
@@ -469,7 +471,7 @@ function play(scroll = true) {
   $('season').value = s;
   // o iframe só recebe valores validados: IMDb (tt+dígitos) e inteiros
   const url = PLAYER + d.s.imdb + '/' + (+s) + '/' + (+e);
-  $('player').innerHTML = '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
+  showEmbed(url, d.s.name + ' · T' + s + ':E' + e, '#ver=' + d.s.id);
   const ep = d.seasons[s].find(x => x.number === e);
   const base = 'T' + s + ':E' + e;
   $('epName').textContent = base + (ep && ep.name ? ' — ' + ep.name : '');
@@ -519,7 +521,7 @@ function setSeg(v) {
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.v === vivoTab));
   $('canaisBox').hidden = vivoTab !== 'canais';
   $('agendaBox').hidden = vivoTab !== 'agenda';
-  if (vivoTab === 'agenda') renderAgenda();
+  if (vivoTab === 'agenda') renderAgenda(); else montaCanais();
 }
 $('seg').onclick = e => { const b = e.target.closest('button'); if (b) { setSeg(b.dataset.v); window.scrollTo(0, 0); } };
 $('qc').oninput = () => { qcanal = $('qc').value.trim(); renderCanais(); };
@@ -555,7 +557,9 @@ const marcaChip = b => [...$('catChips').children].forEach(x => x.classList.togg
 async function renderVivo() {
   only('vivo'); window.scrollTo(0, 0);
   setSeg(vivoTab);
-  if (vivoTab === 'agenda') return;
+}
+
+async function montaCanais() {
   $('msg').textContent = 'Carregando...';
   try { await loadCanais(); } catch (e) { $('msg').textContent = e.message; return; }
   const cont = {};
@@ -591,18 +595,45 @@ async function openCanal(slug) {
   $('vTitle').textContent = c ? c.n : slug;
   $('epName').textContent = c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo';
   // slug validado pelo regex da rota (letras, números, _ e -)
-  $('player').innerHTML = embed(CANAL + slug);
+  showEmbed(CANAL + slug, c ? c.n : slug, '#canal=' + slug);
 }
 
 // iframe do player; a URL sempre é montada com um prefixo fixo e um identificador validado
-const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no" style="width:100%;aspect-ratio:16/9;height:auto;max-width:100%;border:0;display:block;"></iframe>';
+const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
+
+/* ---------- player persistente ----------
+   O iframe vive em #pbox, fora das telas. Na tela do player o #pbox é posicionado em cima do
+   espaço #player; ao sair dela, o mesmo iframe (sem recarregar) vira um miniplayer flutuante
+   com botões para voltar ao player e para fechar. */
+let pstate = null;
+function showEmbed(url, title, hash) {
+  if (!pstate || pstate.url !== url) $('pframe').innerHTML = embed(url);
+  pstate = { url, title, hash };
+  $('ptitle').textContent = title;
+  place();
+}
+function stopEmbed() { pstate = null; $('pframe').innerHTML = ''; place(); }
+function place() {
+  const box = $('pbox');
+  if (!pstate) { box.hidden = true; return; }
+  box.hidden = false;
+  const cheio = !$('view').hidden && location.hash === pstate.hash;
+  box.classList.toggle('mini', !cheio);
+  if (cheio) {
+    const r = $('player').getBoundingClientRect();
+    Object.assign(box.style, { top: (r.top + scrollY) + 'px', left: (r.left + scrollX) + 'px', width: r.width + 'px', height: r.height + 'px' });
+  } else Object.assign(box.style, { top: '', left: '', width: '', height: '' });
+}
+$('pExpand').onclick = () => { if (pstate) location.hash = pstate.hash; };
+$('pClose').onclick = stopEmbed;
+$('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); else route(); };
 
 /* ---------- agenda esportiva ----------
-   O SuperFlix não libera a leitura da lista de eventos por outros sites (a resposta não tem
-   cabeçalho CORS), então o navegador não consegue pedir direto. Os eventos ficam em
-   agenda.json, gerado por tools/atualizar_agenda.py (python tools/atualizar_agenda.py --publicar
-   envia o arquivo ao GitHub). Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de
-   canal no player. */
+   A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue
+   lê-la direto. O app pede a lista por um proxy CORS público de terceiros (tenta um por vez,
+   no máximo 3 chamadas por abertura, com cache de 5 minutos). Se nenhum responder, usa a
+   última agenda salva neste navegador e, por fim, o agenda.json do site.
+   Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de canal no player. */
 let agenda = null, stSel = '', spSel = '';
 const ST = { live: 'AO VIVO', upcoming: 'EM BREVE', finished: 'FINALIZADO' };
 const ST_ORDEM = { live: 0, upcoming: 1, finished: 2 };
@@ -617,16 +648,54 @@ function quando(d) {
   const hora = t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   return (dia === 0 ? 'Hoje' : dia === 1 ? 'Amanhã' : dia === -1 ? 'Ontem' : t.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' · ' + hora;
 }
-let agUltima = 0;
-async function loadAgenda() {
+const LISTA_EVENTOS = 'https://superflixapi.fun/lista?category=eventos&format=json';
+const PROXIES = [
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u)
+];
+const AG_CACHE = 'agenda_cache_v2';
+const ID_OK = /^[A-Za-z0-9_-]{1,120}$/;
+let agUltima = 0, agErro = '', agFonte = '';
+// só guarda o que o app usa; descarta identificadores e canais que não sejam seguros
+function compactaEvento(e) {
+  const id = e.public_slug || e.base_public_slug || e.slug || '';
+  if (!ID_OK.test(id)) return null;
+  const canais = (e.embeds || []).filter(m => m.type === 'channel' && /^[A-Za-z0-9_-]{1,60}$/.test(m.slug || '')).map(m => [m.provider || m.slug, m.slug, m.quality || '']);
+  return { i: id, t: e.title || id, st: e.status || 'upcoming', sp: e.category || '', c: e.competition || '', d: e.start_time || '', a: e.time1_name || '', b: e.time2_name || '', la: e.time1 || '', lb: e.time2 || '', el: e.event_logo || '', e: canais };
+}
+async function viaProxy() {
+  for (const monta of PROXIES) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch(monta(LISTA_EVENTOS), { signal: ctl.signal, cache: 'no-store' });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j && Array.isArray(j.data)) return { gerado: new Date().toISOString(), eventos: j.data.map(compactaEvento).filter(Boolean) };
+    } catch {} finally { clearTimeout(t); }
+  }
+  return null;
+}
+async function loadAgenda(forcar = false) {
+  agErro = '';
+  const cache = get(AG_CACHE, null);
+  const valido = cache && Array.isArray(cache.eventos) && cache.gerado;
+  if (!forcar && valido && Date.now() - new Date(cache.gerado) < 5 * 60000) { agenda = cache; agFonte = 'cache'; return agenda; }
   agUltima = Date.now();
+  const nova = await viaProxy();
+  if (nova) { agenda = nova; agFonte = 'proxy'; set(AG_CACHE, nova); return agenda; }
+  agErro = 'os proxies públicos não responderam';
+  if (valido) { agenda = cache; agFonte = 'salva'; return agenda; }
   try {
     const r = await fetch('agenda.json?m=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
     if (!r.ok) throw new Error('sem agenda');
     const a = await r.json();
-    if (!a || !Array.isArray(a.eventos)) throw new Error('formato');
-    agenda = a;
-  } catch { agenda = { gerado: null, eventos: [] }; }
+    if (!a || !Array.isArray(a.eventos) || !a.gerado) throw new Error('vazia');
+    agenda = a; agFonte = 'arquivo';
+    return agenda;
+  } catch {}
+  agenda = { gerado: null, eventos: [] }; agFonte = '';
   return agenda;
 }
 // se o arquivo estiver velho, corrige o status pelo horário (ao vivo ~3 h depois do início)
@@ -648,12 +717,12 @@ function chipsDe(box, itens, atual, onPick) {
     box.appendChild(b);
   });
 }
-async function renderAgenda() {
+async function renderAgenda(forcar = false) {
   $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
-  await loadAgenda();
+  await loadAgenda(forcar);
   const cont = {};
   agenda.eventos.forEach(e => cont[e.sp] = (cont[e.sp] || 0) + 1);
-  $('agRefresh').onclick = () => { if (Date.now() - agUltima > 10000) renderAgenda(); };
+  $('agRefresh').onclick = () => { if (Date.now() - agUltima > 10000) renderAgenda(true); };
   chipsDe($('stChips'), [['', 'Todos'], ['live', 'Ao vivo'], ['upcoming', 'Em breve'], ['finished', 'Finalizado']], stSel, v => stSel = v);
   chipsDe($('spChips'), [['', 'Todas as modalidades'], ...Object.keys(cont).sort((a, b) => cont[b] - cont[a]).map(k => [k, k])], spSel, v => spSel = v);
   renderAgList();
@@ -667,12 +736,10 @@ function renderAgList() {
     .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
   const box = $('aglist');
   box.innerHTML = '';
-  // no PC o servidor local atualiza sozinho; no site do GitHub quem publica é o dono, pelo script
-  const emLocal = ['localhost', '127.0.0.1', '[::1]', ''].includes(location.hostname);
-  const como = emLocal ? 'rode python servidor.py (ou python tools/atualizar_agenda.py)' : 'no PC, rode python tools/atualizar_agenda.py --publicar';
-  if (min === null) $('agMeta').textContent = 'A agenda ainda não foi publicada: ' + como + '.';
-  else $('agMeta').textContent = 'Atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
-    + (velha ? ' · status ajustado pelo horário; para atualizar, ' + como : '') + ' · horários no seu fuso';
+  const origem = { proxy: 'Direto do SuperFlix (via proxy)', cache: 'Direto do SuperFlix (via proxy)', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
+  if (min === null) $('agMeta').textContent = 'Não consegui carregar a agenda' + (agErro ? ': ' + agErro : '') + '. Toque em Atualizar daqui a pouco.';
+  else $('agMeta').textContent = origem + ' · atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
+    + (agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';
   lista.forEach(e => {
     const d = document.createElement('div');
     d.className = 'ev';
@@ -698,7 +765,7 @@ async function openEvento(slug) {
   $('epName').textContent = e ? [e.sp, e.c, quando(e.d)].filter(Boolean).join(' · ') : 'Evento';
   const box = $('evch');
   box.innerHTML = '';
-  const tocar = (url, btn) => { $('player').innerHTML = embed(url); [...box.children].forEach(x => x.classList.toggle('on', x === btn)); };
+  const tocar = (url, btn) => { showEmbed(url, e ? e.t : slug, '#evento=' + slug); [...box.children].forEach(x => x.classList.toggle('on', x === btn)); };
   const itens = [['Evento (todos os canais)', EVENTO + slug]];
   (e && e.e ? e.e : []).forEach(([nome, cs, q]) => { if (/^[A-Za-z0-9_-]{1,60}$/.test(cs)) itens.push([nome + (q ? ' · ' + q : ''), CANAL + cs]); });
   itens.forEach(([rotulo, url]) => {

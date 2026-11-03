@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <title>ChiquinhaFlix</title>
 <link rel="icon" href="assets/chiquinha.png">
-<link rel="stylesheet" href="style.css?v=202611022039">
+<link rel="stylesheet" href="style.css?v=202611022103">
 </head>
 <body>
 
@@ -83,7 +83,7 @@
 
 <!-- Player -->
 <section id="view" class="wrap" hidden>
-  <button class="pill grey small" id="back">← Voltar</button>
+  <div class="vtop"><button class="pill grey small" id="back">← Voltar</button><button class="pill grey small" id="pStop">✕ Parar e sair</button></div>
   <div class="player" id="player"></div>
   <div class="player-bar">
     <span id="epName"></span>
@@ -155,6 +155,16 @@
   </div>
 </div>
 
-<script src="app.js?v=202611022039"></script>
+<!-- Player persistente: grande na tela do player, flutuante nas outras telas -->
+<div id="pbox" hidden>
+  <div id="pframe"></div>
+  <div class="pbar">
+    <span id="ptitle"></span>
+    <button id="pExpand" title="Voltar ao player" aria-label="Voltar ao player">⤢</button>
+    <button id="pClose" title="Fechar" aria-label="Fechar">✕</button>
+  </div>
+</div>
+
+<script src="app.js?v=202611022103"></script>
 </body>
 </html>
