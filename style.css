@@ -331,3 +331,18 @@ footer p { margin: 4px 0; }
   .aglist { grid-template-columns: 1fr; }
   .ev-logos { flex-basis: 84px; }
 }
+
+/* ---------- modo TV (controle remoto) ---------- */
+.tv-only { display: none !important; }
+html.tv { font-size: 125%; }
+html.tv .tv-only { display: inline-flex !important; }
+html.tv, html.tv * { cursor: none; }
+html.tv .arrow { display: none !important; }
+html.tv :focus { outline: none; }
+html.tv button:focus, html.tv a:focus, html.tv .tile:focus, html.tv .li:focus, html.tv .ep:focus, html.tv .ch:focus, html.tv .ev:focus, html.tv #q:focus, html.tv #q2:focus, html.tv select:focus {
+  outline: 4px solid #fff; outline-offset: 3px; border-radius: 8px; z-index: 5; position: relative;
+}
+html.tv .tile:focus, html.tv .ch:focus { transform: scale(1.07); }
+html.tv .ep:focus, html.tv .ev:focus, html.tv .li:focus { background: #2f2f36; }
+html.tv .pill:focus, html.tv nav#nav button:focus { background: #fff !important; color: #000 !important; }
+html.tv footer a { color: #fff; }

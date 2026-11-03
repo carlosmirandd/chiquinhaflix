@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ChiquinhaFlix">
-<link rel="stylesheet" href="style.css?v=202611030153">
+<link rel="stylesheet" href="style.css?v=202611030207">
 </head>
 <body>
 
@@ -89,7 +89,7 @@
 
 <!-- Player -->
 <section id="view" class="wrap" hidden>
-  <div class="vtop"><button class="pill grey small" id="back">← Voltar</button><button class="pill grey small" id="pStop">✕ Parar e sair</button></div>
+  <div class="vtop"><button class="pill grey small" id="back">← Voltar</button><button class="pill grey small" id="pStop">✕ Parar e sair</button><button class="pill grey small tv-only" id="tvCtl">Controlar vídeo</button></div>
   <div class="player" id="player"></div>
   <div class="player-bar">
     <span id="epName"></span>
@@ -109,6 +109,7 @@
 <footer>
   <p>Projeto pessoal e educacional, sem fins lucrativos. Não hospeda nem distribui vídeo: o player é um embed de terceiros. Não afiliado a nenhum serviço de streaming.</p>
   <p>Dados de séries via <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener">TVMaze</a> (CC BY-SA). Textos traduzidos automaticamente.</p>
+  <p><a href="#" id="tvToggle">Modo TV</a> · setas do controle para navegar, OK para abrir, Voltar para sair.</p>
 </footer>
 
 <!-- Barra inferior (celular) -->
@@ -171,7 +172,8 @@
   </div>
 </div>
 
-<script src="config.js?v=202611030153"></script>
-<script src="app.js?v=202611030153"></script>
+<script src="config.js?v=202611030207"></script>
+<script src="app.js?v=202611030207"></script>
+<script src="tv.js?v=202611030208"></script>
 </body>
 </html>
