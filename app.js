@@ -278,7 +278,7 @@ async function renderBreve() {
   $('sbar').hidden = true; $('listTitle').textContent = 'Novidades';
   const tabs = $('brTabs');
   tabs.hidden = false; tabs.innerHTML = '';
-  [['breve', 'Em breve'], ['alta', 'Todo mundo está assistindo'], ['cal', 'Calendário']].forEach(([k, t]) => {
+  [['breve', '🍿 Em breve'], ['alta', '🔥 Todo mundo está assistindo'], ['cal', '📅 Calendário']].forEach(([k, t]) => {
     const b = document.createElement('button');
     b.textContent = t;
     if (k === brTab) b.className = 'on';
@@ -460,6 +460,12 @@ function row(title, list, opt = {}) {
       t.insertAdjacentHTML('beforeend', '<span class="playov">▶</span>');
       c.appendChild(t);
       c.insertAdjacentHTML('beforeend', '<div class="prog"><i data-id="' + (+s.id) + '" style="width:' + opt.progress(s) + '%"></i></div>');
+      if (opt.proximo) {
+        const nx = document.createElement('button');
+        nx.className = 'nx'; nx.textContent = 'Próximo episódio ›';
+        nx.onclick = e => { e.stopPropagation(); proximoEp(s, nx); };
+        c.appendChild(nx);
+      }
       track.appendChild(c);
     } else track.appendChild(opt.tile ? opt.tile(s) : tile(s));
   });
@@ -489,6 +495,11 @@ async function renderHome() {
   const cont = {};
   list.forEach(s => s.genres.forEach(g => cont[g] = (cont[g] || 0) + 1));
   const top = Object.keys(cont).sort((a, b) => cont[b] - cont[a]);
+  // no celular os botões do topo seguem o app da Netflix: "Novidades" (Em breve, em alta, calendário) e os gêneros
+  const nov = document.createElement('button');
+  nov.textContent = 'Novidades';
+  nov.onclick = () => { page = 'breve'; gsel = ''; query = ''; go(); };
+  $('chips').appendChild(nov);
   top.slice(0, 12).forEach(g => {
     const b = document.createElement('button');
     b.textContent = gen(g);
@@ -498,7 +509,7 @@ async function renderHome() {
 
   renderHero(list);
   const rows = [];
-  rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => pctAbertos(s.id, s.tot) }));
+  rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => pctAbertos(s.id, s.tot), proximo: true }));
   rows.push(row('Minha lista', salvos('favs')));
   rows.push(row('Top 10 séries da semana', list.slice(0, 10), { top10: true }));
   rows.push(row('Em alta', list.slice(10, 40)));
@@ -605,12 +616,29 @@ $('mBack').onclick = dismiss;
 modal.addEventListener('click', e => { if (e.target === modal) dismiss(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) dismiss(); });
 const goPlay = (id, s, e) => { pending = { id, s, e }; location.hash = '#ver=' + id; };
+// episódio seguinte ao (sn, en): o próximo da temporada ou o primeiro da temporada seguinte; null se não houver
+function proximo(d, sn, en) {
+  const prox = (d.seasons[sn] || []).find(x => x.number > en);
+  if (prox) return { s: sn, e: prox.number };
+  const i = d.nums.indexOf(sn);
+  return i >= 0 && d.nums[i + 1] ? { s: d.nums[i + 1], e: d.seasons[d.nums[i + 1]][0].number } : null;
+}
+async function proximoEp(s, btn) {
+  const antes = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Carregando...';
+  try {
+    const n = proximo(await loadShow(s.id), s.s, s.e);
+    if (!n) { btn.textContent = 'Último episódio'; return; }
+    btn.disabled = false; btn.textContent = antes;
+    goPlay(s.id, n.s, n.e);
+  } catch { btn.disabled = false; btn.textContent = antes; }
+}
 
 async function openModal(id) {
   modal.hidden = false; document.body.classList.add('lock', 'on-modal'); modal.scrollTop = 0;
   $('mTitle').textContent = 'Carregando...';
   ['mMeta', 'mMetaMob', 'mCur', 'mSin', 'mRight', 'mEps', 'mProg'].forEach(k => $(k).innerHTML = '');
-  $('mProg').hidden = true; $('mBg').style.backgroundImage = ''; $('mSeason').innerHTML = '';
+  $('mProg').hidden = true; $('mNext').hidden = true; $('mBg').style.backgroundImage = ''; $('mSeason').innerHTML = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('mTitle').textContent = e.message; return; }
   if (modal.hidden || location.hash !== '#serie=' + id) return;
@@ -629,6 +657,8 @@ async function openModal(id) {
     $('mProg').innerHTML = '<div class="bar"><i style="width:' + pctAbertos(s.id, totalEps(d)) + '%"></i></div><span>T' + pos.s + ':E' + pos.e + '</span>';
   }
   $('mPlayTxt').textContent = pos.resume ? 'Continuar' : 'Assistir';
+  mc.next = pos.resume ? proximo(d, pos.s, pos.e) : null;
+  $('mNext').hidden = !mc.next;
   const meta = (s.year ? '<span class="dim">' + esc(s.year) + '</span>' : '')
     + '<span class="badge">HD</span>'
     + '<span class="dim">' + d.nums.length + (d.nums.length > 1 ? ' temporadas' : ' temporada') + '</span>'
@@ -655,6 +685,7 @@ $('mSeason').onchange = () => {
   renderEps($('mEps'), mc.d, mc.s, -1, e => goPlay(id, mc.s, e));
 };
 $('mPlay').onclick = () => { if (mc) goPlay(mc.d.s.id, mc.s, mc.e); };
+$('mNext').onclick = () => { if (mc && mc.next) goPlay(mc.d.s.id, mc.next.s, mc.next.e); };
 function renderFavBtn() {
   if (!mc) return;
   const on = inList(mc.d.s.id);
