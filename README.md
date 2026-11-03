@@ -39,6 +39,7 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 - **Miniplayer**: ao sair da tela de um canal, evento ou episódio, o vídeo continua num player flutuante (sem recarregar), com um botão para voltar à tela do player e outro para fechar. Na tela do player há também "Parar e sair".
 - **Ao vivo**: lista de **canais** (com busca e categorias) e **agenda esportiva** (eventos ao vivo, em breve e finalizados, com troca de canal), tudo aberto pelo embed do SuperFlix. Os canais de conteúdo adulto ficam escondidos atrás do chip **18+**, que pede confirmação (veja abaixo).
 - **Textos em português** (veja abaixo).
+- **PWA**: dá para instalar como app (Android/Chrome: menu → *Instalar app*; iPhone/Safari: Compartilhar → *Adicionar à Tela de Início*). Abre em tela cheia, com ícone próprio, e o "esqueleto" do site abre mesmo sem internet (os dados e vídeos continuam precisando de rede).
 
 ## Como funciona
 
@@ -107,6 +108,7 @@ Este é um **projeto pessoal, educacional e sem fins lucrativos**.
 ```
 index.html   → telas (início, lista, ao vivo, player, detalhes, barra inferior)
 style.css    → visual (desktop e celular)
+manifest.webmanifest, sw.js → PWA (instalação e abertura offline)
 app.js       → lógica (TVMaze, tradução, canais, player, minha lista, histórico)
 canais.json  → lista de canais ao vivo (retrato do SuperFlix)
 agenda.json  → plano B da agenda esportiva (gerado pelo script)

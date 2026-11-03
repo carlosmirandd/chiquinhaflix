@@ -783,3 +783,8 @@ async function openEvento(slug) {
 }
 
 route();
+
+/* ---------- PWA: service worker (instalável e abre sem rede) ---------- */
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
