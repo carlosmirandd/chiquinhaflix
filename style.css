@@ -15,7 +15,7 @@
   --mut: #b3b3b3;
   --card: #2f2f2f;
   --sheet: #181818;
-  --pad: 3.6%;
+  --pad: 3.6vw;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
@@ -180,7 +180,7 @@ h3.dia { scroll-margin-top: 84px; }
 
 /* top 10 */
 .t10 { position: relative; flex: 0 0 auto; display: flex; align-items: flex-end; cursor: pointer; margin-right: 6px; }
-.t10 .num { font-size: clamp(7rem, 15vw, 12rem); font-weight: 900; line-height: .8; color: #141414; -webkit-text-stroke: 3px #595959; margin-right: -26px; letter-spacing: -.08em; font-family: "Arial Black", Impact, sans-serif; }
+.t10 .num { font-size: clamp(7rem, 15vw, 12rem); font-weight: 900; line-height: .8; color: #141414; -webkit-text-stroke: 3px #595959; margin-right: -26px; letter-spacing: -.06em; font-family: "Inter", sans-serif; }
 .t10 .tile { z-index: 1; }
 
 /* grade */
@@ -308,7 +308,7 @@ footer p { margin: 4px 0; }
 
 /* ================= CELULAR: igual ao app ================= */
 @media (max-width: 760px) {
-  :root { --pad: 3.4%; }
+  :root { --pad: 3.4vw; }
   body { padding-bottom: 110px; }
   .t-desk { display: none !important; }
   .t-mob { display: inline-flex !important; }
@@ -351,7 +351,9 @@ footer p { margin: 4px 0; }
   .tile img, .tile.port img { object-position: center; }
   .tile .cap, .tile.port .cap { display: none; }
   .tile:hover { transform: none; }
-  .t10 .num { font-size: 7.5rem; margin-right: -22px; }
+  /* o número acompanha o tamanho do pôster (--tw), então o encaixe é igual em qualquer largura de tela */
+  .t10 { --tw: calc((100vw - 2 * var(--pad) - 14px) / 3.3); margin-right: 0; }
+  .t10 .num { font-size: calc(var(--tw) * 1.2); line-height: .76; margin-right: calc(var(--tw) * -.17); letter-spacing: -.05em; -webkit-text-stroke-width: 2.5px; }
   .cell { position: relative; width: calc((100vw - 2 * var(--pad) - 14px) / 3.3); }
   .playov { display: flex; position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 42px; height: 42px; border: 2px solid #fff; border-radius: 50%; background: rgba(0,0,0,.35); align-items: center; justify-content: center; font-size: .8rem; pointer-events: none; }
   .cell .prog { margin: 8px 0 0; }
