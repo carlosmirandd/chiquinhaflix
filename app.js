@@ -176,7 +176,7 @@ function unicas(lotes) {
 }
 async function loadPopulares() {
   if (populares) return populares;
-  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/tv/day?page=' + p)), ...[1, 2, 3, 4].map(p => api('/tv/popular?page=' + p))]);
+  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/tv/week?page=' + p)), ...[1, 2, 3, 4].map(p => api('/tv/popular?page=' + p))]);
   populares = unicas(lotes).slice(0, 150);
   return populares;
 }
@@ -341,7 +341,7 @@ async function renderHome() {
   const rows = [];
   rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => Math.min(100, Math.round(100 * s.e / (s.of || s.e))) }));
   rows.push(row('Minha lista', salvos('favs')));
-  rows.push(row('Top 10 séries hoje', list.slice(0, 10), { top10: true }));
+  rows.push(row('Top 10 séries da semana', list.slice(0, 10), { top10: true }));
   rows.push(row('Em alta', list.slice(10, 40)));
   top.slice(0, 7).forEach(g => rows.push(row(gen(g), list.filter(s => s.genres.includes(g)).slice(0, 24))));
   rows.forEach(r => r && $('rows').appendChild(r));
@@ -364,7 +364,7 @@ async function renderHero(list) {
   $('heroMeta').innerHTML = metaHero(s, 0);
   $('heroSin').textContent = s.summary;
   const b = $('heroBadge');
-  b.textContent = idx < 10 ? 'Nº ' + (idx + 1) + ' em séries hoje' : (s.rating ? 'Nota ' + s.rating : '');
+  b.textContent = idx < 10 ? 'Nº ' + (idx + 1) + ' da semana' : (s.rating ? 'Nota ' + s.rating : '');
   b.hidden = !b.textContent;
   $('heroFav').textContent = inList(s.id) ? '✓ Na minha lista' : '＋ Minha lista';
   hero.hidden = false;
