@@ -552,11 +552,53 @@ $('back').onclick = () => { if (location.hash) history.back(); else route(); };
 // A lista de canais é um retrato (canais.json) porque o SuperFlix não libera leitura
 // direta (CORS). A agenda muda todo dia, então aparece a própria página deles num iframe.
 let canais = null, vivoTab = get('vivoTab', 'canais'), catSel = '', qcanal = '', adulto = get('adulto', false);
+let canaisBase = null, canaisEm = 0;
+// lista ao vivo do Rei dos Embeds (a mesma origem dos canais do SuperFlix), pelo Worker: canais novos e
+// removidos, nomes e o programa que está passando agora. O Worker já filtra; aqui se confere de novo.
+async function viaWorkerCanais() {
+  if (!WORKER) return null;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(WORKER + '/canais', { signal: ctl.signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j || !Array.isArray(j.canais)) return null;
+    const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+    return j.canais.filter(c => c && /^[A-Za-z0-9_-]{1,60}$/.test(c.s || '')).map(c => ({
+      s: c.s, n: s(c.n, 60) || c.s, c: s(c.c, 40), a: c.a ? 1 : 0, np: s(c.np, 80), pr: Math.max(0, Math.min(100, +c.pr || 0)),
+      nx: (Array.isArray(c.nx) ? c.nx : []).slice(0, 3).map(p => [s(p && p[0], 80), +(p && p[1]) || 0, +(p && p[2]) || 0]).filter(p => p[0] && p[1]),
+    }));
+  } catch { return null; } finally { clearTimeout(t); }
+}
+// a lista ao vivo manda (canal que saiu some, canal novo aparece); as categorias do canais.json (que
+// têm mais de uma por canal) são mantidas e somadas à categoria que vier de lá
+function mesclaCanais(base, vivos) {
+  const antigo = new Map(base.map(c => [c.s, c]));
+  return vivos.map(v => {
+    const b = antigo.get(v.s);
+    const cats = [...new Set([...((b && b.c) || []), ...(v.c ? [v.c] : [])])];
+    return { s: v.s, n: v.n, c: cats, ...((b && b.a) || v.a ? { a: 1 } : {}), np: v.np, pr: v.pr, nx: v.nx };
+  });
+}
 async function loadCanais() {
-  if (canais) return canais;
-  const r = await fetch('canais.json');
-  if (!r.ok) throw new Error('Erro ao carregar a lista de canais');
-  canais = await r.json();
+  if (!canaisBase) {
+    const r = await fetch('canais.json');
+    if (!r.ok) throw new Error('Erro ao carregar a lista de canais');
+    canaisBase = await r.json();
+    canais = canaisBase;
+  }
+  if (WORKER && Date.now() - canaisEm > 5 * 60000) {   // atualiza pelo Worker no máximo a cada 5 min
+    canaisEm = Date.now();
+    let esperou = true;
+    const p = viaWorkerCanais().then(v => {
+      if (!v || v.length < 50) return;                    // lista pequena demais: provavelmente erro, fica a anterior
+      canais = mesclaCanais(canaisBase, v);
+      if (!esperou && !$('vivo').hidden && vivoTab === 'canais') montaCanais();   // chegou depois da tela abrir
+    });
+    await Promise.race([p, new Promise(r => setTimeout(r, 2500))]);
+    esperou = false;
+  }
   return canais;
 }
 const semAcento = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -585,6 +627,7 @@ function canalTile(c) {
   box.insertAdjacentHTML('beforeend', '<span class="live">AO VIVO</span>');
   d.appendChild(box);
   d.insertAdjacentHTML('beforeend', '<p>' + esc(c.n) + '<small>' + esc(c.c.join(' · ')) + '</small></p>');
+  if (c.np) d.insertAdjacentHTML('beforeend', '<div class="np"><span>Agora: ' + esc(c.np) + '</span><b><i style="width:' + (+c.pr || 0) + '%"></i></b></div>');
   d.onclick = () => { location.hash = '#canal=' + c.s; };
   return d;
 }
@@ -592,7 +635,7 @@ function canalTile(c) {
 function renderCanais() {
   const q = semAcento(qcanal);
   // canais adultos (a:1) só aparecem no chip 18+, depois da confirmação
-  const lista = (canais || []).filter(c => (c.a ? adulto && catSel === 'Adulto' : (!catSel || c.c.includes(catSel))) && (!q || semAcento(c.n).includes(q)));
+  const lista = (canais || []).filter(c => (c.a ? adulto && catSel === 'Adulto' : (!catSel || c.c.includes(catSel))) && (!q || semAcento(c.n).includes(q) || semAcento(c.np || '').includes(q)));   // acha também pelo programa no ar
   $('chgrid').innerHTML = '';
   lista.forEach(c => $('chgrid').appendChild(canalTile(c)));
   $('msg').textContent = lista.length ? '' : 'Nenhum canal encontrado.';
@@ -639,7 +682,7 @@ async function openCanal(slug) {
   try { lista = await loadCanais(); } catch {}
   const c = lista.find(x => x.s === slug);
   $('vTitle').textContent = c ? c.n : slug;
-  $('epName').textContent = c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo';
+  $('epName').textContent = (c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo') + (c && c.np ? ' · Agora: ' + c.np : '');
   // slug validado pelo regex da rota (letras, números, _ e -)
   showEmbed(CANAL + slug, c ? c.n : slug, '#canal=' + slug);
 }
@@ -683,7 +726,7 @@ $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); els
 let agenda = null, stSel = '', spSel = '';
 const ST = { live: 'AO VIVO', upcoming: 'EM BREVE', finished: 'FINALIZADO' };
 const ST_ORDEM = { live: 0, upcoming: 1, finished: 2 };
-const logoOk = u => typeof u === 'string' && /^https:\/\/superflixapi\.fun\//.test(u);
+const logoOk = u => typeof u === 'string' && /^https:\/\/(superflixapi\.fun|reidosembeds\.lat)\//.test(u);
 // os horários do SuperFlix são de Brasília (UTC-3)
 const dataEv = d => new Date(String(d).replace(' ', 'T') + '-03:00');
 function quando(d) {
@@ -715,7 +758,7 @@ async function viaWorker() {
     if (!r.ok) { agErro = 'o Worker respondeu HTTP ' + r.status; return null; }
     const j = await r.json();
     if (!j || !Array.isArray(j.eventos)) { agErro = 'resposta inesperada do Worker'; return null; }
-    return { gerado: j.gerado && !isNaN(new Date(j.gerado)) ? j.gerado : new Date().toISOString(), eventos: j.eventos.map(limpaEvento).filter(Boolean) };
+    return { gerado: j.gerado && !isNaN(new Date(j.gerado)) ? j.gerado : new Date().toISOString(), fonte: j.fonte === 'rde' ? 'rde' : 'superflix', eventos: j.eventos.map(limpaEvento).filter(Boolean) };
   } catch { agErro = 'não consegui falar com o Worker'; return null; } finally { clearTimeout(t); }
 }
 const AG_FALHA = 'agenda_worker_falha';
@@ -786,7 +829,8 @@ function renderAgList() {
     .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
   const box = $('aglist');
   box.innerHTML = '';
-  const origem = { worker: 'Direto do SuperFlix (via Cloudflare)', cache: 'Direto do SuperFlix (via Cloudflare)', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
+  const vivo = agenda.fonte === 'rde' ? 'Direto do Rei dos Embeds (via Cloudflare; o SuperFlix não respondeu)' : 'Direto do SuperFlix (via Cloudflare)';
+  const origem = { worker: vivo, cache: vivo, salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
   if (min === null) $('agMeta').textContent = 'Não consegui carregar a agenda' + (agErro ? ': ' + agErro : '') + '. Toque em Atualizar daqui a pouco.';
   else $('agMeta').textContent = origem + ' · atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
     + (agTentando ? ' · tentando atualizar pela Cloudflare…' : agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';

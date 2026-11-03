@@ -49,18 +49,19 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 | Catálogo, capas, imagens de fundo, temporadas, episódios, elenco, títulos e sinopses em português | [TMDB API](https://www.themoviedb.org/documentation/api), consultada pelo **Worker da Cloudflare**, que guarda a chave |
 | Sinopses que faltam em português | Tradução automática, só nesses casos (veja abaixo) |
 | Vídeo das séries | `iframe` (embed) de um serviço de terceiros, o [SuperFlixAPI](https://superflixapi.fun/doc), aberto pelo ID da TMDB da série |
-| Canais ao vivo | Lista própria em `canais.json` (um retrato da página de canais do SuperFlix) e player `https://superflixapi.fun/canal/{canal}` |
-| Agenda esportiva | Lista de eventos do SuperFlix lida por um **Worker da Cloudflare** seu (`cloudflare/worker.js`); plano B: `agenda.json`. Cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
+| Canais ao vivo | Lista ao vivo da API do [Rei dos Embeds](https://reidosembeds.lat/doc) (a mesma origem dos canais do SuperFlix), lida pelo Worker, com o **programa que está no ar agora**; `canais.json` é o plano B. O player é `https://superflixapi.fun/canal/{canal}` |
+| Agenda esportiva | Lista de eventos do SuperFlix lida por um **Worker da Cloudflare** seu (`cloudflare/worker.js`); se o SuperFlix falhar, o Worker usa a agenda do Rei dos Embeds (mesmos eventos); plano B final: `agenda.json`. Cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
 
 A chave da TMDB **não está no código nem no repositório**: ela fica como segredo do Worker (`TMDB_KEY`) e o site só fala com o Worker, que aceita apenas consultas de uma lista fixa (`/tmdb/...`) e só responde ao endereço do site. Quem clonar o projeto precisa de uma chave própria (gratuita) e do próprio Worker: `python cloudflare/publicar.py --tmdb SUA_CHAVE`.
 
 ### Sobre os canais e a agenda
 
-- O SuperFlix não libera a leitura da lista por outros sites (CORS), então a lista de canais é um **retrato** salvo em `canais.json`, com nome, endereço do canal e categorias. Canais novos ou removidos só aparecem quando esse arquivo for atualizado. Os logos vêm direto do SuperFlix.
+- A lista de **canais** é atualizada ao vivo pelo Worker (rota `/canais`, a partir da API do Rei dos Embeds): canais novos e removidos aparecem sozinhos, e cada cartão mostra o **programa no ar agora**, com barra de progresso, para 140+ canais. A busca de canais também acha pelo nome do programa. O `canais.json` (um retrato com várias categorias por canal) continua como plano B e para as categorias extras. Os logos vêm do SuperFlix. Só o player usa o SuperFlix; o Rei dos Embeds entra apenas como fonte de dados, porque os domínios de embed dele mudam com frequência.
 - A **agenda** é montada pelo próprio app. A API de eventos do SuperFlix **não manda o cabeçalho CORS** (`access-control-allow-origin`), então o navegador não consegue lê-la direto. Por isso existe um **Worker da Cloudflare** (`cloudflare/worker.js`) que faz a chamada pelo servidor, guarda a resposta em cache por 5 minutos e devolve só o necessário, com o CORS liberado apenas para o site. Para publicá-lo, rode uma vez `python cloudflare/publicar.py` (passo a passo em [`cloudflare/LEIAME.md`](cloudflare/LEIAME.md)); o endereço dele fica em `config.js`.
 - No app, a agenda aparece **na hora** (a última salva no navegador ou o `agenda.json` do site) e é atualizada pelo Worker em segundo plano, com cache de 5 minutos e um botão **Atualizar** (só vale a cada 10 segundos). Se o Worker falhar, o app lembra a falha por 5 minutos. A tela diz de onde vieram os dados e há quanto tempo.
 - **Privacidade:** o Worker enxerga as chamadas do seu site (o IP de quem abre a agenda) e não guarda nada.
-- O `agenda.json` é o plano B (também usado enquanto o Worker não estiver publicado). Para gerá-lo e publicá-lo, no PC: `python tools/atualizar_agenda.py --publicar` (gera o arquivo e faz `add`, `commit` e `push` só dele). O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. `python servidor.py` abre o app local e mantém o arquivo atualizado (no máximo a cada 5 minutos). Não há automação (GitHub Actions) de propósito.
+- Se o SuperFlix limitar ou cair, o Worker troca sozinho para a agenda do Rei dos Embeds, e a tela avisa de onde vieram os dados.
+- O `agenda.json` é o plano B final (também usado enquanto o Worker não estiver publicado). Para gerá-lo e publicá-lo, no PC: `python tools/atualizar_agenda.py --publicar` (gera o arquivo e faz `add`, `commit` e `push` só dele). O script faz **uma** chamada, espera uma vez se levar "429" e, se falhar de novo, mantém o arquivo antigo. Não rode em laço. `python servidor.py` abre o app local e mantém o arquivo atualizado (no máximo a cada 5 minutos). Não há automação (GitHub Actions) de propósito.
 - Se os dados estiverem velhos, a tela avisa e ajusta o status pelo horário do jogo (por exemplo, um jogo que começou há mais de 3 horas passa a "Finalizado").
 - Os canais da categoria **Adulto** (11 canais, a maioria de conteúdo explícito) ficam fora de "Todos" e das outras categorias. Eles só aparecem no chip **18+**, depois de uma confirmação de idade guardada no seu navegador (`localStorage`). O Adult Swim, por exemplo, é um canal de séries e desenhos e aparece normalmente.
 
@@ -109,7 +110,7 @@ style.css    → visual (desktop e celular)
 tv.js        → modo TV (setas do controle remoto)
 manifest.webmanifest, sw.js → PWA (instalação e abertura offline)
 app.js       → lógica (TMDB, tradução, canais, player, minha lista, histórico)
-canais.json  → lista de canais ao vivo (retrato do SuperFlix)
+canais.json  → lista de canais ao vivo (plano B; a lista atual vem do Worker)
 agenda.json  → plano B da agenda esportiva (gerado pelo script)
 config.js    → endereço do Worker da agenda (preenchido por cloudflare/publicar.py)
 cloudflare/  → Worker da agenda, script de publicação e passo a passo
