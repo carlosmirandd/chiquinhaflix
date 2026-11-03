@@ -1,7 +1,9 @@
-// ChiquinhaFlix — catálogo via TVMaze (sem chave) + player embed do SuperFlix.
+// ChiquinhaFlix — catálogo via TMDB (o Worker da Cloudflare guarda a chave) + player embed do SuperFlix.
 // Tudo roda no navegador: favoritos, histórico e traduções ficam no localStorage.
 const $ = id => document.getElementById(id);
-const API = 'https://api.tvmaze.com';
+const WORKER = String(window.CHIQUINHA_AGENDA_URL || '').replace(/\/+$/, '');   // config.js
+const API = WORKER + '/tmdb';
+const IMG = 'https://image.tmdb.org/t/p/';
 const PLAYER = 'https://superflixapi.fun/serie/';
 const CANAL = 'https://superflixapi.fun/canal/';
 const EVENTO = 'https://superflixapi.fun/eventos/';
@@ -9,38 +11,45 @@ const EVENTO = 'https://superflixapi.fun/eventos/';
 /* ---------- storage ---------- */
 const get = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const set = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+// favoritos e histórico: só entradas já no formato da TMDB (as antigas eram do TVMaze, com outros IDs)
+const salvos = k => get(k, []).filter(x => x && x.tm);
 
 /* ---------- utilidades ---------- */
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const plain = html => { const d = new DOMParser().parseFromString(html || '', 'text/html'); return d.body.textContent || ''; };
-const validImdb = id => /^tt\d+$/.test(id || '');
-const hoje = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-const GENEROS = { Drama: 'Dramas', Comedy: 'Comédias', Crime: 'Crime', 'Science-Fiction': 'Ficção científica', Action: 'Ação', Adventure: 'Aventura', Fantasy: 'Fantasia', Horror: 'Terror', Thriller: 'Suspense', Romance: 'Romance', Mystery: 'Mistério', Anime: 'Animes', Family: 'Família', Supernatural: 'Sobrenatural', Medical: 'Medicina', Legal: 'Tribunais', War: 'Guerra', Western: 'Faroeste', Espionage: 'Espionagem', History: 'História', Music: 'Música', Nature: 'Natureza', Food: 'Culinária', Sports: 'Esportes', Children: 'Infantil', Travel: 'Viagem', DIY: 'Faça você mesmo' };
-const gen = g => GENEROS[g] || g;
-const STATUS = { Running: 'Em exibição', Ended: 'Finalizada', 'To Be Determined': 'A definir', 'In Development': 'Em desenvolvimento' };
+// gêneros de séries da TMDB (os IDs são fixos)
+const GEN_ID = { 10759: 'Ação e aventura', 16: 'Animação', 35: 'Comédia', 80: 'Crime', 99: 'Documentário', 18: 'Drama', 10751: 'Família', 10762: 'Infantil', 9648: 'Mistério', 10763: 'Notícias', 10764: 'Reality', 10765: 'Ficção e fantasia', 10766: 'Novela', 10767: 'Talk show', 10768: 'Guerra e política', 37: 'Faroeste' };
+const gen = g => g;
+const STATUS = { 'Returning Series': 'Em exibição', Ended: 'Finalizada', Canceled: 'Cancelada', 'In Production': 'Em produção', Planned: 'Planejada', Pilot: 'Piloto' };
 const PLUS = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
+// Consulta a TMDB pelo Worker (que guarda a chave e já pede os textos em pt-BR).
 async function api(path) {
-  const r = await fetch(API + path);
-  if (!r.ok) throw new Error('Erro ' + r.status + ' ao falar com a TVMaze');
+  if (!WORKER) throw new Error('O catálogo precisa do Worker da Cloudflare: rode python cloudflare/publicar.py (veja cloudflare/LEIAME.md).');
+  let r;
+  try { r = await fetch(API + path); } catch { throw new Error('Não consegui falar com o catálogo (Worker da Cloudflare).'); }
+  if (!r.ok) throw new Error(r.status === 503 ? 'O catálogo ainda não tem a chave da TMDB (ou está no limite). Tente de novo em instantes.' : 'Erro ' + r.status + ' ao falar com a TMDB');
   return r.json();
 }
 
-// só guardamos o necessário; sem IMDb não dá pra abrir no player
+// só guardamos o necessário; tm:1 marca o formato da TMDB
 const slim = s => ({
-  id: s.id, name: s.name, imdb: s.externals && s.externals.imdb,
-  poster: s.image && s.image.medium, big: s.image && s.image.original,
-  year: (s.premiered || '').slice(0, 4), genres: s.genres || [], weight: s.weight || 0,
-  rating: s.rating && s.rating.average, status: s.status, summary: plain(s.summary).slice(0, 240)
+  tm: 1, id: s.id, name: s.name || s.original_name || '',
+  poster: s.poster_path ? IMG + 'w342' + s.poster_path : null,
+  big: s.poster_path ? IMG + 'w780' + s.poster_path : null,
+  back: s.backdrop_path ? IMG + 'w1280' + s.backdrop_path : null,
+  year: (s.first_air_date || '').slice(0, 4),
+  genres: (s.genre_ids || (s.genres || []).map(g => g.id)).map(i => GEN_ID[i]).filter(Boolean),
+  weight: s.popularity || 0,
+  rating: s.vote_count >= 5 && s.vote_average ? s.vote_average.toFixed(1) : null,
+  status: s.status, summary: (s.overview || '').slice(0, 240)
 });
-const playable = s => validImdb(s.imdb);
+const playable = s => Number.isInteger(s.id);
 
 /* ---------- português ----------
-   A TVMaze só tem inglês. Duas gambiarras:
-   1) título em português do Brasil: vem do /akas da própria TVMaze (quando existe);
-   2) sinopses e nomes de episódio: tradução automática (endpoint público do Google
-      Tradutor; se falhar, MyMemory; se falhar, fica o original). Cache no localStorage. */
+   A TMDB já entrega títulos, sinopses e episódios em português do Brasil. Quando falta uma
+   sinopse (comum em episódios), o texto em inglês é traduzido por tradução automática (endpoint
+   público do Google Tradutor; se falhar, MyMemory; se falhar, fica o original). Cache no localStorage. */
 const TR_KEY = 'tr_pt_v1';
 const trc = get(TR_KEY, {});
 let trTimer;
@@ -101,19 +110,6 @@ async function ptMany(items, apply) {
   const worker = async () => { while (i < items.length) { const it = items[i++]; apply(it, await pt(it.text)); } };
   await Promise.all([worker(), worker(), worker()]);
 }
-const akaCache = new Map();
-async function titulo(id, fallback) {
-  if (akaCache.has(id)) return akaCache.get(id);
-  let t = fallback;
-  try {
-    const a = await api('/shows/' + id + '/akas');
-    const br = a.find(x => x.country && x.country.code === 'BR') || a.find(x => x.country && x.country.code === 'PT');
-    if (br && br.name) t = br.name;
-  } catch {}
-  akaCache.set(id, t);
-  return t;
-}
-
 /* ---------- estado ---------- */
 let page = 'home', query = '', gsel = '', rendered = '', under = 'home', pending = null, cur = null;
 let populares = null, hojeCache = null, heroShow = null;
@@ -173,43 +169,100 @@ $('tabbar').onclick = navClick;
 $('logo').onclick = () => { page = 'home'; query = ''; $('q').value = ''; go(); };
 
 /* ---------- dados ---------- */
+// junta listas da TMDB: tira repetidos e quem não tem pôster
+function unicas(lotes) {
+  const vistos = new Set();
+  return lotes.flatMap(l => l.results || []).map(slim).filter(s => s.poster && playable(s) && !vistos.has(s.id) && vistos.add(s.id));
+}
 async function loadPopulares() {
   if (populares) return populares;
-  const pages = await Promise.all([0, 1, 2, 3].map(p => api('/shows?page=' + p)));
-  populares = pages.flat().map(slim).filter(playable).sort((a, b) => b.weight - a.weight).slice(0, 150);
+  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/tv/day?page=' + p)), ...[1, 2, 3, 4].map(p => api('/tv/popular?page=' + p))]);
+  populares = unicas(lotes).slice(0, 150);
   return populares;
 }
 async function loadHoje() {
   if (hojeCache) return hojeCache;
-  const d = hoje();
-  const [web, tv] = await Promise.all([api('/schedule/web?date=' + d), api('/schedule?country=US&date=' + d)]);
-  const map = new Map();
-  [...web, ...tv].forEach(ep => { const s = ep._embedded && ep._embedded.show; if (s && !map.has(s.id)) map.set(s.id, slim(s)); });
-  hojeCache = [...map.values()].filter(playable).sort((a, b) => b.weight - a.weight);
+  const lotes = await Promise.all([1, 2].map(p => api('/tv/airing_today?timezone=America/Sao_Paulo&page=' + p)));
+  hojeCache = unicas(lotes).sort((a, b) => b.weight - a.weight);
   return hojeCache;
+}
+// temporadas (com episódios) de uma série; até 20 por chamada
+async function loadTemporadas(id, nums, lang) {
+  const out = {};
+  const lotes = [];
+  for (let i = 0; i < nums.length; i += 20) lotes.push(nums.slice(i, i + 20));
+  const resp = await Promise.all(lotes.map(l => api('/tv/' + id + '?language=' + lang + '&append_to_response=' + l.map(n => 'season/' + n).join(','))));
+  resp.forEach(r => nums.forEach(n => { if (r['season/' + n] && r['season/' + n].episodes) out[n] = r['season/' + n].episodes; }));
+  return out;
 }
 async function loadShow(id) {
   if (showCache.has(id)) return showCache.get(id);
-  const [show, eps] = await Promise.all([api('/shows/' + id + '?embed=cast'), api('/shows/' + id + '/episodes')]);
+  const show = await api('/tv/' + id + '?append_to_response=credits');
+  const todas = (show.seasons || []).map(x => x.season_number).filter(n => n > 0);
+  const brutas = await loadTemporadas(id, todas, 'pt-BR');
+  // episódios sem sinopse em português: pega a em inglês e marca para traduzir
+  const faltam = todas.filter(n => (brutas[n] || []).some(e => !e.overview));
+  const ingles = faltam.length ? await loadTemporadas(id, faltam, 'en-US').catch(() => ({})) : {};
   const seasons = {};
-  eps.forEach(ep => { if (ep.number != null) (seasons[ep.season] ||= []).push(ep); });
+  todas.forEach(n => {
+    const eps = (brutas[n] || []).filter(e => e.episode_number != null).map(e => {
+      const en = ((ingles[n] || []).find(x => x.episode_number === e.episode_number) || {}).overview;
+      const tr = !e.overview && !!en;
+      return { number: e.episode_number, name: e.name, summary: e.overview || en || '', tr, image: e.still_path ? { medium: IMG + 'w300' + e.still_path } : null, runtime: e.runtime };
+    });
+    if (eps.length) seasons[n] = eps;
+  });
+  let sin = { text: show.overview || '', tr: false };
+  if (!sin.text) {
+    const en = await api('/tv/' + id + '?language=en-US').catch(() => null);
+    if (en && en.overview) sin = { text: en.overview, tr: true };
+  }
   const d = {
-    show, s: slim(show), seasons,
+    show: { summary: sin.text, tr: sin.tr }, s: slim(show), seasons,
     nums: Object.keys(seasons).map(Number).sort((a, b) => a - b),
-    cast: ((show._embedded && show._embedded.cast) || []).map(c => c.person.name)
+    cast: ((show.credits && show.credits.cast) || []).slice(0, 10).map(c => c.name)
   };
   showCache.set(id, d);
   return d;
 }
-async function backdrop(id) {
-  try {
-    const imgs = await api('/shows/' + id + '/images');
-    const bg = imgs.find(i => i.type === 'background' && i.main) || imgs.find(i => i.type === 'background');
-    return bg && bg.resolutions && bg.resolutions.original ? bg.resolutions.original.url : null;
-  } catch { return null; }
+
+/* ---------- migração ----------
+   Antes o catálogo era do TVMaze (outros IDs). Quem já tinha Minha lista / histórico tem entradas
+   guardadas com IMDb: aqui cada uma é achada de novo na TMDB e convertida (uma vez só). */
+const MIGRA = 'migrado_tmdb_v1';
+const seenKey = id => 'seen2_' + id;   // episódios já vistos (o prefixo antigo, seen_, era dos IDs do TVMaze)
+async function migrar() {
+  if (!WORKER || get(MIGRA, false)) return;
+  const velho = x => x && !x.tm && /^tt\d+$/.test(x.imdb || '');
+  if (!get('favs', []).some(velho) && !get('hist', []).some(velho)) { set(MIGRA, true); return; }
+  const achados = new Map();
+  let falhou = false;
+  const converte = async lista => {
+    const out = [];
+    for (const v of lista) {
+      if (!velho(v)) { if (v && v.tm) out.push(v); continue; }
+      if (!achados.has(v.imdb)) {
+        try {
+          const r = await api('/find/' + v.imdb + '?external_source=imdb_id');
+          achados.set(v.imdb, r.tv_results && r.tv_results[0] ? slim(r.tv_results[0]) : null);
+        } catch { falhou = true; achados.set(v.imdb, undefined); }
+      }
+      const n = achados.get(v.imdb);
+      if (n === undefined) { out.push(v); continue; }          // falhou: mantém para tentar depois
+      if (!n || out.some(o => o.id === n.id)) continue;         // não existe na TMDB ou repetida
+      const seen = get('seen_' + v.id, []);
+      if (seen.length && !get(seenKey(n.id), []).length) set(seenKey(n.id), seen);
+      out.push(v.s != null ? { ...n, s: v.s, e: v.e, of: v.of } : n);
+    }
+    return out;
+  };
+  set('favs', await converte(get('favs', [])));
+  set('hist', await converte(get('hist', [])));
+  if (!falhou) set(MIGRA, true);
 }
+const migrado = migrar().catch(() => {});
 const startPos = d => {
-  const last = get('hist', []).find(x => x.id === d.s.id);
+  const last = salvos('hist').find(x => x.id === d.s.id);
   return last && d.seasons[last.s] ? { s: last.s, e: last.e, resume: true, of: last.of } : { s: d.nums[0], e: d.seasons[d.nums[0]][0].number, resume: false };
 };
 
@@ -258,9 +311,9 @@ function row(title, list, opt = {}) {
 }
 
 const dots = parts => parts.filter(Boolean).map(p => '<span>' + esc(p) + '</span>').join('');
-const inList = id => get('favs', []).some(x => x.id === id);
+const inList = id => salvos('favs').some(x => x.id === id);
 function toggleFav(s) {
-  const f = get('favs', []);
+  const f = salvos('favs');
   set('favs', f.some(x => x.id === s.id) ? f.filter(x => x.id !== s.id) : [s, ...f]);
   rendered = '';
 }
@@ -271,6 +324,7 @@ async function renderHome() {
   $('rows').innerHTML = ''; $('chips').innerHTML = ''; $('hero').hidden = true; $('msg').textContent = 'Carregando...';
   let list;
   try { list = await loadPopulares(); } catch (e) { $('msg').textContent = e.message; return; }
+  await Promise.race([migrado, new Promise(r => setTimeout(r, 6000))]);   // lista/histórico antigos
   $('msg').textContent = '';
 
   const cont = {};
@@ -285,8 +339,8 @@ async function renderHome() {
 
   renderHero(list);
   const rows = [];
-  rows.push(row('Continuar assistindo', get('hist', []), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => Math.min(100, Math.round(100 * s.e / (s.of || s.e))) }));
-  rows.push(row('Minha lista', get('favs', [])));
+  rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => Math.min(100, Math.round(100 * s.e / (s.of || s.e))) }));
+  rows.push(row('Minha lista', salvos('favs')));
   rows.push(row('Top 10 séries hoje', list.slice(0, 10), { top10: true }));
   rows.push(row('Em alta', list.slice(10, 40)));
   top.slice(0, 7).forEach(g => rows.push(row(gen(g), list.filter(s => s.genres.includes(g)).slice(0, 24))));
@@ -298,11 +352,14 @@ function metaHero(s, temporadas) {
     + (s.rating ? '<span class="badge star">★ ' + esc(s.rating) + '</span>' : '');
 }
 async function renderHero(list) {
-  const idx = Math.floor(Math.random() * 15);
-  const s = heroShow = list[idx];
+  // sorteia entre os 15 primeiros, de preferência os que têm sinopse e imagem de fundo
+  const top = list.slice(0, 15);
+  const pool = top.filter(x => x.back && x.summary);
+  const s = heroShow = (pool.length ? pool : top)[Math.floor(Math.random() * (pool.length || top.length))];
+  const idx = list.indexOf(s);
   const hero = $('hero');
   hero.style.setProperty('--poster', s.big ? 'url("' + s.big + '")' : 'none');
-  hero.style.removeProperty('--back');
+  if (s.back) hero.style.setProperty('--back', 'url("' + s.back + '")'); else hero.style.removeProperty('--back');
   $('heroTitle').textContent = s.name;
   $('heroMeta').innerHTML = metaHero(s, 0);
   $('heroSin').textContent = s.summary;
@@ -311,13 +368,10 @@ async function renderHero(list) {
   b.hidden = !b.textContent;
   $('heroFav').textContent = inList(s.id) ? '✓ Na minha lista' : '＋ Minha lista';
   hero.hidden = false;
-  // melhorias assíncronas: sinopse e título em português, fundo em paisagem, nº de temporadas
-  pt(s.summary).then(t => { if (heroShow === s) $('heroSin').textContent = t; });
-  const [bg, seasons, tit] = await Promise.all([backdrop(s.id), api('/shows/' + s.id + '/seasons').catch(() => null), titulo(s.id, s.name)]);
+  // o nº de temporadas só vem nos detalhes
+  const det = await api('/tv/' + s.id).catch(() => null);
   if (heroShow !== s) return;
-  if (bg) hero.style.setProperty('--back', 'url("' + bg + '")');
-  if (seasons && seasons.length) $('heroMeta').innerHTML = metaHero(s, seasons.length);
-  $('heroTitle').textContent = tit;
+  if (det && det.number_of_seasons) $('heroMeta').innerHTML = metaHero(s, det.number_of_seasons);
 }
 $('heroInfo').onclick = () => heroShow && open(heroShow.id);
 $('heroPlay').onclick = () => heroShow && (location.hash = '#ver=' + heroShow.id);
@@ -334,18 +388,17 @@ async function renderGrid() {
   if (lista && document.activeElement !== $('q2')) setTimeout(() => $('q2').focus(), 60);
   let list = [];
   try {
-    if (query) list = (await api('/search/shows?q=' + encodeURIComponent(query))).map(x => slim(x.show)).filter(playable);
+    if (query) list = ((await api('/search/tv?query=' + encodeURIComponent(query.slice(0, 100)))).results || []).map(slim).filter(s => s.poster && playable(s));
     else if (lista) list = (await loadPopulares()).slice(0, 30);
     else if (page === 'hoje') list = await loadHoje();
     else if (page === 'genero') list = (await loadPopulares()).filter(s => s.genres.includes(gsel));
-    else list = get('favs', []);
+    else list = salvos('favs');
   } catch (e) { $('msg').textContent = e.message; return; }
   list.forEach(s => $('grid').appendChild(lista ? itemLista(s) : tile(s)));
   $('msg').textContent = list.length ? '' : (page === 'lista' && !query ? 'Sua lista está vazia. Abra uma série e toque em "Minha lista".' : 'Nada encontrado.');
 }
 
 /* ---------- lista de episódios (detalhes e player) ---------- */
-const seenKey = id => 'seen_' + id;
 function renderEps(box, d, sn, activeE, pick) {
   const seen = get(seenKey(d.s.id), []);
   const tr = [];
@@ -356,12 +409,12 @@ function renderEps(box, d, sn, activeE, pick) {
     const img = x.image && x.image.medium;
     el.innerHTML = '<span class="n">' + esc(x.number) + '</span>'
       + '<div class="thumb">' + (img ? '<img loading="lazy" src="' + esc(img) + '" alt="">' : '') + '</div>'
-      + '<div class="t"><b><em class="num2">' + esc(x.number) + '. </em><strong>' + esc(x.name) + '</strong><span>' + (x.runtime ? esc(x.runtime) + 'min' : '') + '</span></b><p>' + esc(plain(x.summary)) + '</p></div>';
+      + '<div class="t"><b><em class="num2">' + esc(x.number) + '. </em><strong>' + esc(x.name) + '</strong><span>' + (x.runtime ? esc(x.runtime) + 'min' : '') + '</span></b><p>' + esc(x.summary) + '</p></div>';
     el.onclick = () => pick(x.number);
     box.appendChild(el);
-    tr.push({ node: el.querySelector('strong'), text: x.name }, { node: el.querySelector('p'), text: plain(x.summary) });
+    if (x.tr && x.summary) tr.push({ node: el.querySelector('p'), text: x.summary });   // só o que veio em inglês
   });
-  ptMany(tr.filter(i => i.text), (it, r) => { if (it.node.isConnected) it.node.textContent = r; });
+  ptMany(tr, (it, r) => { if (it.node.isConnected) it.node.textContent = r; });
 }
 const seasonOptions = d => d.nums.map(n => '<option value="' + n + '">Temporada ' + n + '</option>').join('');
 
@@ -386,13 +439,12 @@ async function openModal(id) {
   if (modal.hidden || location.hash !== '#serie=' + id) return;
   const s = d.s;
   $('mTitle').textContent = s.name;
-  titulo(id, s.name).then(t => { if (mc && mc.d === d) $('mTitle').textContent = t; });
-  if (!playable(s) || !d.nums.length) { $('mSin').textContent = !playable(s) ? 'Sem ID do IMDb, não dá pra abrir no player.' : 'Sem episódios listados.'; return; }
+  if (!d.nums.length) { $('mSin').textContent = d.show.summary || 'Sem episódios listados.'; return; }
 
   const pos = startPos(d);
   mc = { d, s: pos.s, e: pos.e };
-  $('mBg').style.backgroundImage = s.big ? 'url("' + s.big + '")' : '';
-  backdrop(id).then(u => { if (u && mc && mc.d === d) $('mBg').style.backgroundImage = 'url("' + u + '")'; });
+  const bg = s.back || s.big;
+  $('mBg').style.backgroundImage = bg ? 'url("' + bg + '")' : '';
 
   const ep = d.seasons[pos.s].find(x => x.number === pos.e);
   if (pos.resume) {
@@ -410,15 +462,11 @@ async function openModal(id) {
     + (s.genres.length ? '<p><span class="k">Gêneros:</span> ' + esc(s.genres.map(gen).join(', ')) + '</p>' : '')
     + (s.status ? '<p><span class="k">Esta série está:</span> ' + esc(STATUS[s.status] || s.status) + '</p>' : '');
 
-  // sinopse e nome do episódio em português
-  const sinEn = pos.resume && ep && plain(ep.summary) ? plain(ep.summary) : plain(d.show.summary);
-  $('mSin').textContent = sinEn;
-  pt(sinEn).then(t => { if (mc && mc.d === d) $('mSin').textContent = t; });
-  if (pos.resume && ep) {
-    const base = 'T' + pos.s + ':E' + pos.e + ' "';
-    $('mCur').textContent = base + ep.name + '"';
-    pt(ep.name).then(t => { if (mc && mc.d === d) $('mCur').textContent = base + t + '"'; });
-  }
+  // sinopse (do episódio, se estiver continuando); só o que veio em inglês passa pela tradução
+  const sin = pos.resume && ep && ep.summary ? { text: ep.summary, tr: ep.tr } : d.show;
+  $('mSin').textContent = sin.text || sin.summary || '';
+  if (sin.tr) { const t0 = sin.text || sin.summary; pt(t0).then(t => { if (mc && mc.d === d) $('mSin').textContent = t; }); }
+  if (pos.resume && ep) $('mCur').textContent = 'T' + pos.s + ':E' + pos.e + ' "' + ep.name + '"';
 
   renderFavBtn();
   $('mSeason').innerHTML = seasonOptions(d); $('mSeason').value = pos.s;
@@ -454,12 +502,11 @@ async function openPlayer(id) {
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('eps').innerHTML = ''; $('epName').textContent = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('vTitle').textContent = e.message; return; }
-  if (!playable(d.s) || !d.nums.length) { $('vTitle').textContent = d.s.name + ' — não dá pra abrir no player.'; return; }
+  if (!d.nums.length) { $('vTitle').textContent = d.s.name + ' — sem episódios para abrir no player.'; return; }
   const pos = pending && pending.id === id ? pending : startPos(d);
   pending = null;
   cur = { d, s: pos.s, e: pos.e };
   $('vTitle').textContent = d.s.name;
-  titulo(id, d.s.name).then(t => { if (cur && cur.d === d) $('vTitle').textContent = t; });
   $('season').innerHTML = seasonOptions(d);
   play(false);
 }
@@ -469,18 +516,17 @@ const maxEp = sn => Math.max(...cur.d.seasons[sn].map(e => e.number));
 function play(scroll = true) {
   const { d, s, e } = cur;
   $('season').value = s;
-  // o iframe só recebe valores validados: IMDb (tt+dígitos) e inteiros
-  const url = PLAYER + d.s.imdb + '/' + (+s) + '/' + (+e);
+  // o iframe só recebe inteiros (id da TMDB, temporada e episódio)
+  const url = PLAYER + (+d.s.id) + '/' + (+s) + '/' + (+e);
   showEmbed(url, d.s.name + ' · T' + s + ':E' + e, '#ver=' + d.s.id);
   const ep = d.seasons[s].find(x => x.number === e);
   const base = 'T' + s + ':E' + e;
   $('epName').textContent = base + (ep && ep.name ? ' — ' + ep.name : '');
-  if (ep && ep.name) pt(ep.name).then(t => { if (cur && cur.d === d && cur.s === s && cur.e === e) $('epName').textContent = base + ' — ' + t; });
 
   const seen = get(seenKey(d.s.id), []);
   const tag = s + 'x' + e;
   if (!seen.includes(tag)) { seen.push(tag); set(seenKey(d.s.id), seen); }
-  const h = get('hist', []).filter(x => x.id !== d.s.id);
+  const h = salvos('hist').filter(x => x.id !== d.s.id);
   h.unshift({ ...d.s, s, e, of: d.seasons[s].length });
   set('hist', h.slice(0, 40));
   rendered = '';   // a home precisa refletir o novo "continuar assistindo"

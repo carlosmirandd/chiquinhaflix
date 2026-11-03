@@ -46,14 +46,13 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 
 | Parte | Origem |
 |---|---|
-| Catálogo, capas, temporadas, episódios, elenco | [TVMaze API](https://www.tvmaze.com/api): gratuita, sem chave de API, sem cadastro |
-| Título em português do Brasil | `/akas` da própria TVMaze, quando a série tem título cadastrado para o Brasil |
-| Sinopses e nomes de episódio em português | Tradução automática (veja abaixo) |
-| Vídeo das séries | `iframe` (embed) de um serviço de terceiros, o [SuperFlixAPI](https://superflixapi.fun/doc), aberto pelo ID do IMDb da série |
+| Catálogo, capas, imagens de fundo, temporadas, episódios, elenco, títulos e sinopses em português | [TMDB API](https://www.themoviedb.org/documentation/api), consultada pelo **Worker da Cloudflare**, que guarda a chave |
+| Sinopses que faltam em português | Tradução automática, só nesses casos (veja abaixo) |
+| Vídeo das séries | `iframe` (embed) de um serviço de terceiros, o [SuperFlixAPI](https://superflixapi.fun/doc), aberto pelo ID da TMDB da série |
 | Canais ao vivo | Lista própria em `canais.json` (um retrato da página de canais do SuperFlix) e player `https://superflixapi.fun/canal/{canal}` |
 | Agenda esportiva | Lista de eventos do SuperFlix lida por um **Worker da Cloudflare** seu (`cloudflare/worker.js`); plano B: `agenda.json`. Cada evento abre pelo embed `https://superflixapi.fun/eventos/{evento}` |
 
-Como a TVMaze não exige chave, **não há nenhum segredo no código**. O repositório é seguro para ser público e qualquer pessoa pode clonar e usar. Séries que a TVMaze não associa a um ID do IMDb ficam de fora, porque o player não consegue abri-las.
+A chave da TMDB **não está no código nem no repositório**: ela fica como segredo do Worker (`TMDB_KEY`) e o site só fala com o Worker, que aceita apenas consultas de uma lista fixa (`/tmdb/...`) e só responde ao endereço do site. Quem clonar o projeto precisa de uma chave própria (gratuita) e do próprio Worker: `python cloudflare/publicar.py --tmdb SUA_CHAVE`.
 
 ### Sobre os canais e a agenda
 
@@ -65,15 +64,13 @@ Como a TVMaze não exige chave, **não há nenhum segredo no código**. O reposi
 - Se os dados estiverem velhos, a tela avisa e ajusta o status pelo horário do jogo (por exemplo, um jogo que começou há mais de 3 horas passa a "Finalizado").
 - Os canais da categoria **Adulto** (11 canais, a maioria de conteúdo explícito) ficam fora de "Todos" e das outras categorias. Eles só aparecem no chip **18+**, depois de uma confirmação de idade guardada no seu navegador (`localStorage`). O Adult Swim, por exemplo, é um canal de séries e desenhos e aparece normalmente.
 
-### Sobre a tradução
+### Sobre o português e a tradução
 
-A TVMaze só tem dados em inglês. Para mostrar o site em português:
+A TMDB já entrega títulos, sinopses e episódios em português do Brasil (o Worker pede `pt-BR`). Quando uma sinopse não existe em português (comum em episódios), o app pega a versão em inglês e a **traduz automaticamente** pelo próprio navegador, chamando o endpoint público do Google Tradutor e, se ele falhar, o [MyMemory](https://mymemory.translated.net/). As traduções ficam em cache no `localStorage`.
 
-1. o **título** vem do `/akas` da TVMaze (por exemplo, "Ruptura Total" no lugar de "Breaking Bad"), quando existe;
-2. **sinopses e nomes de episódio** são traduzidos automaticamente pelo próprio navegador, chamando o endpoint público do Google Tradutor e, se ele falhar, o [MyMemory](https://mymemory.translated.net/). Se os dois falharem, fica o texto original em inglês;
-3. as traduções ficam em cache no `localStorage`, então cada texto é traduzido uma vez só.
+Nesse caso **o texto da sinopse (dado público de série) é enviado a esses serviços de tradução**. Nenhum dado pessoal vai junto. O endpoint do Google usado é o não oficial (`translate.googleapis.com`), então pode mudar ou deixar de funcionar sem aviso, e a qualidade é a de uma tradução automática.
 
-Isso significa que **os textos das sinopses (dados públicos de séries) são enviados a esses serviços de tradução** quando você abre uma série. Nenhum dado pessoal vai junto. O endpoint do Google usado é o não oficial (`translate.googleapis.com`), então pode mudar ou deixar de funcionar sem aviso; a qualidade é a de uma tradução automática, e nomes de episódio podem sair estranhos.
+Quem já usava o app antes da TMDB não perde nada: na primeira abertura, **Minha lista**, **Continuar assistindo** e os episódios vistos são convertidos para o novo catálogo (as séries são achadas de novo pelo ID do IMDb).
 
 ## Como rodar
 
@@ -94,13 +91,13 @@ Este é um **projeto pessoal, educacional e sem fins lucrativos**.
 - Este repositório **não hospeda, não armazena e não distribui nenhum vídeo**. Ele só exibe um `iframe` apontando para um serviço de terceiros.
 - Não tenho controle sobre o conteúdo desse serviço, nem garantias sobre a licença dos vídeos que ele serve. **Cada pessoa é responsável pelo que acessa** e deve respeitar a legislação de direitos autorais do seu país.
 - O serviço de terceiros **libera o embed só para domínios autorizados**. Em domínios não autorizados (incluindo `localhost`), o player mostra "Embed não disponível aqui" em vez do vídeo. Ele também pode exibir uma verificação da Cloudflare (anti-bot) ou ficar indisponível a qualquer momento. Nada disso depende deste código: o catálogo, a busca, a minha lista e o histórico funcionam normalmente mesmo sem o vídeo.
-- O projeto cobre **séries sob demanda, canais ao vivo e a agenda esportiva**. Não há filmes (a TVMaze só tem séries).
+- O projeto cobre **séries sob demanda, canais ao vivo e a agenda esportiva**. Não há filmes.
 - Canais de TV e eventos esportivos ao vivo, como as séries, são servidos por um terceiro sem relação com este código. Nada disso é licenciado por este projeto, e ele existe só como uso pessoal.
 - Se o repositório for tornado **privado**, o site do GitHub Pages sai do ar no plano gratuito (Pages para repositório privado exige plano pago). Nesse caso, rode localmente com `python servidor.py`.
 
 ## Créditos
 
-- Dados de séries: [TVMaze](https://www.tvmaze.com/api), licenciados sob [CC BY-SA](https://creativecommons.org/licenses/by-sa/4.0/).
+- Este produto usa a API da [TMDB](https://www.themoviedb.org), mas não é endossado nem certificado pela TMDB. Dados de séries e imagens: TMDB (uso pessoal e sem fins lucrativos).
 - Projeto original (2023): ChiquinhaFlix, feito em grupo para a disciplina de Apps II.
 - A imagem da logo vem do projeto original e é uma homenagem pessoal a ele, sem fins comerciais.
 
@@ -111,7 +108,7 @@ index.html   → telas (início, lista, ao vivo, player, detalhes, barra inferio
 style.css    → visual (desktop e celular)
 tv.js        → modo TV (setas do controle remoto)
 manifest.webmanifest, sw.js → PWA (instalação e abertura offline)
-app.js       → lógica (TVMaze, tradução, canais, player, minha lista, histórico)
+app.js       → lógica (TMDB, tradução, canais, player, minha lista, histórico)
 canais.json  → lista de canais ao vivo (retrato do SuperFlix)
 agenda.json  → plano B da agenda esportiva (gerado pelo script)
 config.js    → endereço do Worker da agenda (preenchido por cloudflare/publicar.py)
@@ -124,4 +121,4 @@ docs/        → prints usados neste README
 
 ## Licença
 
-O código é distribuído sob a licença [MIT](LICENSE). A licença **não** cobre a logo nem os dados da TVMaze, que seguem seus próprios termos.
+O código é distribuído sob a licença [MIT](LICENSE). A licença **não** cobre a logo nem os dados e imagens da TMDB, que seguem seus próprios termos.
