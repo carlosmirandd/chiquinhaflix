@@ -667,7 +667,7 @@ function compactaEvento(e) {
 async function viaProxy() {
   for (const monta of PROXIES) {
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 8000);
+    const t = setTimeout(() => ctl.abort(), 6000);
     try {
       const r = await fetch(monta(LISTA_EVENTOS), { signal: ctl.signal, cache: 'no-store' });
       if (!r.ok) continue;
@@ -677,27 +677,26 @@ async function viaProxy() {
   }
   return null;
 }
-async function loadAgenda(forcar = false) {
+const AG_FALHA = 'agenda_proxy_falha';
+let agTentando = false;
+// base rápida: o que já está salvo (cache do navegador ou agenda.json do site), a mais nova das duas.
+// Retorna true se o cache for recente o bastante para nem tentar os proxies.
+async function loadBase() {
   agErro = '';
   const cache = get(AG_CACHE, null);
   const valido = cache && Array.isArray(cache.eventos) && cache.gerado;
-  if (!forcar && valido && Date.now() - new Date(cache.gerado) < 5 * 60000) { agenda = cache; agFonte = 'cache'; return agenda; }
-  agUltima = Date.now();
-  const nova = await viaProxy();
-  if (nova) { agenda = nova; agFonte = 'proxy'; set(AG_CACHE, nova); return agenda; }
-  agErro = 'os proxies públicos não responderam';
-  if (valido) { agenda = cache; agFonte = 'salva'; return agenda; }
+  if (valido && Date.now() - new Date(cache.gerado) < 5 * 60000) { agenda = cache; agFonte = 'cache'; return true; }
+  let arq = null;
   try {
     const r = await fetch('agenda.json?m=' + Math.floor(Date.now() / 60000), { cache: 'no-store' });
-    if (!r.ok) throw new Error('sem agenda');
-    const a = await r.json();
-    if (!a || !Array.isArray(a.eventos) || !a.gerado) throw new Error('vazia');
-    agenda = a; agFonte = 'arquivo';
-    return agenda;
+    if (r.ok) { const x = await r.json(); if (x && Array.isArray(x.eventos) && x.gerado) arq = x; }
   } catch {}
-  agenda = { gerado: null, eventos: [] }; agFonte = '';
-  return agenda;
+  if (arq && (!valido || new Date(arq.gerado) >= new Date(cache.gerado))) { agenda = arq; agFonte = 'arquivo'; }
+  else if (valido) { agenda = cache; agFonte = 'salva'; }
+  else { agenda = { gerado: null, eventos: [] }; agFonte = ''; }
+  return false;
 }
+async function loadAgenda() { if (!agenda) await loadBase(); return agenda; }
 // se o arquivo estiver velho, corrige o status pelo horário (ao vivo ~3 h depois do início)
 function statusEv(e, velha) {
   if (!velha) return e.st;
@@ -717,15 +716,25 @@ function chipsDe(box, itens, atual, onPick) {
     box.appendChild(b);
   });
 }
-async function renderAgenda(forcar = false) {
-  $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
-  await loadAgenda(forcar);
+function montaAgenda() {
   const cont = {};
   agenda.eventos.forEach(e => cont[e.sp] = (cont[e.sp] || 0) + 1);
-  $('agRefresh').onclick = () => { if (Date.now() - agUltima > 10000) renderAgenda(true); };
   chipsDe($('stChips'), [['', 'Todos'], ['live', 'Ao vivo'], ['upcoming', 'Em breve'], ['finished', 'Finalizado']], stSel, v => stSel = v);
   chipsDe($('spChips'), [['', 'Todas as modalidades'], ...Object.keys(cont).sort((a, b) => cont[b] - cont[a]).map(k => [k, k])], spSel, v => spSel = v);
   renderAgList();
+}
+async function renderAgenda(forcar = false) {
+  $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
+  $('agRefresh').onclick = () => { if (!agTentando && Date.now() - agUltima > 10000) renderAgenda(true); };
+  const fresca = await loadBase();
+  montaAgenda();                       // já mostra o que existe, sem esperar os proxies
+  if (fresca && !forcar) return;
+  if (!forcar && Date.now() - get(AG_FALHA, 0) < 60 * 60000) { agErro = 'proxies públicos fora do ar; nova tentativa em até 1 h (Atualizar força)'; renderAgList(); return; }
+  agUltima = Date.now(); agTentando = true; renderAgList();
+  const nova = await viaProxy();
+  agTentando = false;
+  if (nova) { agenda = nova; agFonte = 'proxy'; agErro = ''; set(AG_CACHE, nova); set(AG_FALHA, 0); montaAgenda(); }
+  else { agErro = 'os proxies públicos não responderam'; set(AG_FALHA, Date.now()); renderAgList(); }
 }
 function renderAgList() {
   const min = agenda.gerado ? Math.round((Date.now() - new Date(agenda.gerado)) / 60000) : null;
@@ -739,7 +748,7 @@ function renderAgList() {
   const origem = { proxy: 'Direto do SuperFlix (via proxy)', cache: 'Direto do SuperFlix (via proxy)', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
   if (min === null) $('agMeta').textContent = 'Não consegui carregar a agenda' + (agErro ? ': ' + agErro : '') + '. Toque em Atualizar daqui a pouco.';
   else $('agMeta').textContent = origem + ' · atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
-    + (agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';
+    + (agTentando ? ' · tentando atualizar pelos proxies…' : agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';
   lista.forEach(e => {
     const d = document.createElement('div');
     d.className = 'ev';
