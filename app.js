@@ -114,7 +114,8 @@ async function ptMany(items, apply) {
 let page = 'home', query = '', gsel = '', rendered = '', under = 'home', pending = null, cur = null;
 let populares = null, hojeCache = null, heroShow = null;
 const showCache = new Map();
-const TITULOS = { home: 'Início', hoje: 'No ar hoje', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
+const TITULOS = { home: 'Início', hoje: 'No ar hoje', breve: 'Em breve', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
+let homeTk = 0;   // descarta o "Em breve" que chegar depois de a home ser refeita
 
 const SECTIONS = ['home', 'list', 'view', 'vivo'];
 function only(name) { SECTIONS.forEach(s => $(s).hidden = s !== name); $('msg').textContent = ''; }
@@ -141,7 +142,7 @@ async function ensurePage() {
   const k = pageKey();
   under = (!query && page === 'home') ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
   syncUI();
-  if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : under === 'vivo' ? renderVivo() : renderGrid()); }
+  if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : under === 'vivo' ? renderVivo() : (page === 'breve' && !query) ? renderBreve() : renderGrid()); }
   else only(under);
 }
 async function rotear() {
@@ -186,6 +187,158 @@ async function loadHoje() {
   hojeCache = unicas(lotes).sort((a, b) => b.weight - a.weight);
   return hojeCache;
 }
+/* ---------- em breve ----------
+   Calendário de episódios do SuperFlix (séries, animes e doramas), lido pelo Worker (/calendario).
+   Os IDs são os da TMDB, os mesmos do catálogo: tocar num cartão abre a série. */
+let calCache = null;
+async function loadCalendario() {
+  if (calCache) return calCache;
+  if (!WORKER) throw new Error('O calendário precisa do Worker da Cloudflare.');
+  let r;
+  try { r = await fetch(WORKER + '/calendario'); } catch { throw new Error('Não consegui falar com o calendário.'); }
+  if (!r.ok) throw new Error('O calendário do SuperFlix não respondeu agora (HTTP ' + r.status + '). Tente de novo daqui a pouco.');
+  const j = await r.json();
+  if (!j || !Array.isArray(j.itens)) throw new Error('O calendário veio em formato inesperado.');
+  const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+  calCache = j.itens.filter(x => x && /^\d{1,9}$/.test(x.id || '') && /^\d{4}-\d{2}-\d{2}$/.test(x.d || ''))
+    .map(x => ({ id: +x.id, t: s(x.t, 120), ep: s(x.ep, 120), s: +x.s || 0, n: +x.n || 0, d: x.d, p: /^\/[A-Za-z0-9_.-]{1,80}$/.test(x.p || '') ? x.p : '' }));
+  return calCache;
+}
+const hojeISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const dataLocal = iso => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d); };
+const diasAte = iso => Math.round((dataLocal(iso) - dataLocal(hojeISO())) / 86400000);
+const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+function rotuloDia(iso) {
+  const n = diasAte(iso), dt = dataLocal(iso);
+  return n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : DIAS[dt.getDay()] + ', ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0');
+}
+// uma entrada por série e por dia (novelas têm dezenas de episódios no mesmo dia): fica o menor episódio e "+N"
+function breves(itens, ateDias) {
+  const mapa = new Map();
+  itens.filter(x => x.d >= hojeISO() && (ateDias == null || diasAte(x.d) <= ateDias))
+    .sort((a, b) => a.d.localeCompare(b.d) || a.s - b.s || a.n - b.n)
+    .forEach(x => { const k = x.id + '|' + x.d; if (mapa.has(k)) mapa.get(k).mais++; else mapa.set(k, { ...x, mais: 0 }); });
+  return [...mapa.values()];
+}
+function tileBreve(x, semDia) {
+  const sub = 'T' + x.s + ':E' + x.n + (x.mais ? ' +' + x.mais : '') + (x.ep ? ' · ' + x.ep : '');
+  const t = tile({ id: x.id, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '' }, sub);
+  if (!semDia) t.insertAdjacentHTML('beforeend', '<span class="when">' + esc(rotuloDia(x.d)) + '</span>');
+  return t;
+}
+/* Relevância: o calendário do SuperFlix tem 400+ séries (novelas, animes, doramas...). As "relevantes" são as
+   que também estão entre as mais populares/em alta da TMDB (a lista de populares da home); elas vêm primeiro. */
+const posicaoNoTop = () => { const m = new Map(); (populares || []).forEach((s, i) => m.set(s.id, i)); return m; };
+const umaPorSerie = lista => { const v = new Set(); return lista.filter(x => !v.has(x.id) && v.add(x.id)); };
+function relevantes(cal, ateDias) {
+  const pos = posicaoNoTop();
+  return umaPorSerie(breves(cal, ateDias).filter(x => pos.has(x.id))).sort((a, b) => a.d.localeCompare(b.d) || pos.get(a.id) - pos.get(b.id));
+}
+function emBreveOrdenado(cal, ateDias) {
+  const rel = relevantes(cal, ateDias), ids = new Set(rel.map(x => x.id));
+  return [...rel, ...umaPorSerie(breves(cal, ateDias).filter(x => !ids.has(x.id)))];
+}
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+function rotuloLancamento(x) {
+  const n = diasAte(x.d), dt = dataLocal(x.d);
+  const tipo = x.n === 1 ? (x.s === 1 ? 'Estreia' : 'Nova temporada') : 'Novo episódio';
+  const quando = n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()];
+  return tipo + quando + (x.n === 1 ? '' : ' · T' + x.s + ':E' + x.n);
+}
+
+// cartão grande do "Novidades" (backdrop, título, quando, sinopse e botões)
+function cardNv(c) {
+  const el = document.createElement('div');
+  el.className = 'nv';
+  el.innerHTML = '<div class="nv-img"></div><div class="nv-body"><h2></h2><p class="nv-rot"></p><p class="nv-sin"></p>'
+    + '<div class="nv-btns"><button class="pill white sq nv-a"></button><button class="pill grey sq nv-fav"></button></div></div>';
+  const img = el.querySelector('.nv-img');
+  const poe = s => {   // preenche (ou atualiza, quando os detalhes chegam) imagem, título e sinopse
+    el._s = s;
+    el.querySelector('h2').textContent = s.name;
+    el.querySelector('.nv-sin').textContent = s.summary || c.sin || '';
+    const u = s.back || s.big || s.poster;
+    if (u) { img.innerHTML = '<img loading="lazy" src="' + esc(u) + '" alt="">'; }
+    fav();
+  };
+  const fav = () => { el.querySelector('.nv-fav').textContent = inList(el._s.id) ? '✓ Na minha lista' : '＋ Minha lista'; };
+  el.querySelector('.nv-rot').textContent = c.rotulo;
+  el.querySelector('.nv-a').textContent = c.acao;
+  el.querySelector('.nv-a').onclick = () => c.vai(el._s);
+  el.querySelector('.nv-fav').onclick = () => { toggleFav(el._s); fav(); };
+  img.onclick = el.querySelector('h2').onclick = () => open(el._s.id);
+  poe(c.serie);
+  el._poe = poe;
+  return el;
+}
+
+let brTab = get('breveTab', 'breve'), nvObs = null;
+async function renderBreve() {
+  only('list'); window.scrollTo(0, 0);
+  $('sbar').hidden = true; $('listTitle').textContent = 'Novidades';
+  const tabs = $('brTabs');
+  tabs.hidden = false; tabs.innerHTML = '';
+  [['breve', 'Em breve'], ['alta', 'Todo mundo está assistindo'], ['cal', 'Calendário']].forEach(([k, t]) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (k === brTab) b.className = 'on';
+    b.onclick = () => { brTab = k; set('breveTab', k); [...tabs.children].forEach(x => x.classList.toggle('on', x === b)); window.scrollTo(0, 0); conteudoBreve(); };
+    tabs.appendChild(b);
+  });
+  await conteudoBreve();
+}
+async function conteudoBreve() {
+  const tab = brTab, box = $('grid');
+  if (nvObs) nvObs.disconnect();
+  box.className = tab === 'cal' ? 'grid' : 'grid feed'; box.innerHTML = ''; $('msg').textContent = 'Carregando...';
+  let pop = [], cal = [];
+  try { [pop, cal] = await Promise.all([loadPopulares().catch(() => []), tab === 'alta' ? [] : loadCalendario()]); }
+  catch (e) { if (tab === brTab) $('msg').textContent = e.message; return; }
+  if (tab !== brTab) return;   // trocou de aba enquanto carregava
+  $('msg').textContent = '';
+
+  if (tab === 'alta') {
+    pop.slice(0, 20).forEach((s, i) => box.appendChild(cardNv({ serie: s, rotulo: 'Em alta esta semana · nº ' + (i + 1), acao: '▶ Assistir', vai: x => { location.hash = '#ver=' + x.id; } })));
+    return;
+  }
+  if (tab === 'breve') {
+    // só as relevantes; se a lista de populares não carregou, mostra as próximas mesmo assim
+    let lista = relevantes(cal, 21);
+    if (!lista.length) lista = emBreveOrdenado(cal, 21).slice(0, 12);
+    // imagem, título em português e sinopse vêm da TMDB; busca só quando o cartão chega perto da tela
+    nvObs = new IntersectionObserver(es => es.forEach(e => {
+      if (!e.isIntersecting) return;
+      nvObs.unobserve(e.target);
+      loadLeve(e.target._id).then(s => { if (s && e.target.isConnected) e.target._poe(s); });
+    }), { rootMargin: '500px' });
+    lista.slice(0, 40).forEach((x, i) => {
+      const mini = { tm: 1, id: x.id, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '', summary: '' };
+      const el = cardNv({ serie: mini, rotulo: rotuloLancamento(x), acao: 'Detalhes', vai: s => open(s.id) });
+      el._id = x.id;
+      box.appendChild(el);
+      if (i < 8) loadLeve(x.id).then(s => { if (s && el.isConnected) el._poe(s); });   // a primeira tela já vem completa
+      else nvObs.observe(el);
+    });
+    if (!lista.length) $('msg').textContent = 'Nada marcado para os próximos dias.';
+    return;
+  }
+  // calendário completo, dia a dia; dentro de cada dia as relevantes vêm primeiro
+  const pos = posicaoNoTop();
+  const todos = breves(cal).sort((a, b) => a.d.localeCompare(b.d) || (pos.has(a.id) ? pos.get(a.id) : 9999) - (pos.has(b.id) ? pos.get(b.id) : 9999) || a.t.localeCompare(b.t));
+  let dia = '';
+  todos.forEach(x => {
+    if (x.d !== dia) { dia = x.d; const dt = dataLocal(x.d); box.insertAdjacentHTML('beforeend', '<h3 class="dia">' + esc(rotuloDia(x.d)) + (diasAte(x.d) > 1 ? '' : ' · ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')) + '</h3>'); }
+    box.appendChild(tileBreve(x, true));
+  });
+  if (!todos.length) $('msg').textContent = 'Nada marcado para os próximos dias.';
+}
+// detalhes leves de uma série (imagem de fundo, nome e sinopse em português), com cache
+const leves = new Map();
+function loadLeve(id) {
+  if (!leves.has(id)) leves.set(id, api('/tv/' + id).then(slim).catch(() => null));
+  return leves.get(id);
+}
+
 // temporadas (com episódios) de uma série; até 20 por chamada
 async function loadTemporadas(id, nums, lang) {
   const out = {};
@@ -230,7 +383,12 @@ async function loadShow(id) {
    Antes o catálogo era do TVMaze (outros IDs). Quem já tinha Minha lista / histórico tem entradas
    guardadas com IMDb: aqui cada uma é achada de novo na TMDB e convertida (uma vez só). */
 const MIGRA = 'migrado_tmdb_v1';
-const seenKey = id => 'seen2_' + id;   // episódios já vistos (o prefixo antigo, seen_, era dos IDs do TVMaze)
+const seenKey = id => 'seen2_' + id;   // episódios já abertos (o prefixo antigo, seen_, era dos IDs do TVMaze)
+// O player é um iframe de outro site: o app não enxerga o ponto do vídeo. O que dá para saber é quantos
+// episódios da série já foram abertos, e é isso que as barras mostram (não o tempo dentro do episódio).
+const totalEps = d => d.nums.reduce((n, k) => n + d.seasons[k].length, 0);
+const abertos = id => get(seenKey(id), []).length;
+const pctAbertos = (id, tot) => tot && abertos(id) ? Math.max(4, Math.min(100, Math.round(100 * abertos(id) / tot))) : 0;
 async function migrar() {
   if (!WORKER || get(MIGRA, false)) return;
   const velho = x => x && !x.tm && /^tt\d+$/.test(x.imdb || '');
@@ -301,10 +459,11 @@ function row(title, list, opt = {}) {
       const t = tile(s, opt.sub && opt.sub(s));
       t.insertAdjacentHTML('beforeend', '<span class="playov">▶</span>');
       c.appendChild(t);
-      c.insertAdjacentHTML('beforeend', '<div class="prog"><i style="width:' + opt.progress(s) + '%"></i></div>');
+      c.insertAdjacentHTML('beforeend', '<div class="prog"><i data-id="' + (+s.id) + '" style="width:' + opt.progress(s) + '%"></i></div>');
       track.appendChild(c);
-    } else track.appendChild(tile(s));
+    } else track.appendChild(opt.tile ? opt.tile(s) : tile(s));
   });
+  if (opt.more) { const h = r.querySelector('h3'); h.classList.add('link'); h.onclick = opt.more; }
   r.querySelector('.l').onclick = () => track.scrollBy({ left: -track.clientWidth * .85 });
   r.querySelector('.r').onclick = () => track.scrollBy({ left: track.clientWidth * .85 });
   return r;
@@ -339,12 +498,29 @@ async function renderHome() {
 
   renderHero(list);
   const rows = [];
-  rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => Math.min(100, Math.round(100 * s.e / (s.of || s.e))) }));
+  rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => pctAbertos(s.id, s.tot) }));
   rows.push(row('Minha lista', salvos('favs')));
   rows.push(row('Top 10 séries da semana', list.slice(0, 10), { top10: true }));
   rows.push(row('Em alta', list.slice(10, 40)));
   top.slice(0, 7).forEach(g => rows.push(row(gen(g), list.filter(s => s.genres.includes(g)).slice(0, 24))));
   rows.forEach(r => r && $('rows').appendChild(r));
+
+  // "Em breve" vem do Worker e chega depois; entra logo depois do Top 10
+  const tk = ++homeTk;
+  loadCalendario().then(cal => {
+    if (tk !== homeTk) return;
+    const r = row('Em breve', emBreveOrdenado(cal, 14).slice(0, 30), { tile: tileBreve, more: () => { page = 'breve'; query = ''; go(); } });
+    if (!r) return;
+    const top = [...$('rows').children].find(el => (el.querySelector('h3') || {}).textContent === 'Top 10 séries da semana');
+    if (top) top.after(r); else $('rows').prepend(r);
+  }).catch(() => {});
+  // entradas do histórico de antes das barras novas não têm o total de episódios: busca e completa
+  salvos('hist').filter(h => !h.tot).forEach(h => loadShow(h.id).then(d => {
+    const tot = totalEps(d), hist = get('hist', []), x = hist.find(e => e.id === h.id && e.tm);
+    if (x) { x.tot = tot; set('hist', hist); }
+    const i = document.querySelector('.prog i[data-id="' + (+h.id) + '"]');
+    if (i) i.style.width = pctAbertos(h.id, tot) + '%';
+  }).catch(() => {}));
 }
 
 function metaHero(s, temporadas) {
@@ -382,6 +558,7 @@ async function renderGrid() {
   only('list'); window.scrollTo(0, 0);
   const lista = page === 'busca';
   $('sbar').hidden = !lista;
+  $('brTabs').hidden = true;
   $('grid').className = lista ? 'grid rows' : 'grid';
   $('grid').innerHTML = ''; $('msg').textContent = 'Carregando...';
   $('listTitle').textContent = query ? (lista ? 'Resultados' : 'Resultados para "' + query + '"') : lista ? 'Séries recomendadas' : page === 'hoje' ? 'No ar hoje' : page === 'genero' ? gen(gsel) : 'Minha lista';
@@ -449,7 +626,7 @@ async function openModal(id) {
   const ep = d.seasons[pos.s].find(x => x.number === pos.e);
   if (pos.resume) {
     $('mProg').hidden = false;
-    $('mProg').innerHTML = '<div class="bar"><i style="width:' + Math.min(100, Math.round(100 * pos.e / (pos.of || pos.e))) + '%"></i></div><span>T' + pos.s + ':E' + pos.e + '</span>';
+    $('mProg').innerHTML = '<div class="bar"><i style="width:' + pctAbertos(s.id, totalEps(d)) + '%"></i></div><span>T' + pos.s + ':E' + pos.e + '</span>';
   }
   $('mPlayTxt').textContent = pos.resume ? 'Continuar' : 'Assistir';
   const meta = (s.year ? '<span class="dim">' + esc(s.year) + '</span>' : '')
@@ -527,7 +704,7 @@ function play(scroll = true) {
   const tag = s + 'x' + e;
   if (!seen.includes(tag)) { seen.push(tag); set(seenKey(d.s.id), seen); }
   const h = salvos('hist').filter(x => x.id !== d.s.id);
-  h.unshift({ ...d.s, s, e, of: d.seasons[s].length });
+  h.unshift({ ...d.s, s, e, of: d.seasons[s].length, tot: totalEps(d) });
   set('hist', h.slice(0, 40));
   rendered = '';   // a home precisa refletir o novo "continuar assistindo"
 

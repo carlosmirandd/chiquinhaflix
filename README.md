@@ -31,7 +31,9 @@ A tela de login da versão original saiu: como tudo fica no seu navegador, não 
 ## O que ele faz
 
 - **Layout de app no celular**: barra inferior flutuante, banner vertical, categorias em botões, detalhes em tela cheia e busca em tela própria. No computador, vira um layout de TV/desktop com modal de detalhes.
-- Banner em destaque, fileiras por gênero, **Top 10**, **Continuar assistindo** (com barra de progresso) e **No ar hoje**.
+- Banner em destaque, fileiras por gênero, **Top 10 da semana**, **Em breve**, **Continuar assistindo** e **No ar hoje**.
+- **Novidades** (aba "Em breve"): cartões grandes, no estilo do app da Netflix, com as estreias e novos episódios dos próximos dias das séries **relevantes** (as que também estão entre as mais populares da TMDB). Tem também "Todo mundo está assistindo" (em alta na semana) e o **Calendário** completo, dia a dia, com as relevantes primeiro. Os dados vêm do calendário do SuperFlix (séries, animes e doramas), lido pelo Worker (`/calendario`); os IDs são os da TMDB, então cada cartão abre a série no catálogo.
+- **A barra do "Continuar assistindo" mostra quantos episódios da série já foram abertos**, não o ponto do vídeo: o player é de outro site (iframe) e o app não enxerga o tempo de reprodução.
 - **Busca** por nome e navegação por **gênero**.
 - **Detalhes** com elenco, gêneros, status, "Continuar" e lista de episódios por temporada. Os já vistos ganham a barra vermelha.
 - Player com seletor de **temporada** e **episódio**, anterior/próximo (passam sozinhos para a temporada seguinte).

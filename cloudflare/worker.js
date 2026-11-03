@@ -74,12 +74,12 @@ function compactaCanal(c) {
 }
 
 // baixa um JSON (com cache de 5 min na Cloudflare só para respostas boas) e já classifica a falha
-async function baixa(url, nome) {
+async function baixa(url, nome, ttl = CACHE_SEGUNDOS) {
   let up;
   try {
     up = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChiquinhaFlix-Worker/1.0)', Accept: 'application/json' },
-      cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': CACHE_SEGUNDOS, '400-599': 0 } },
+      cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': ttl, '400-599': 0 } },
     });
   } catch {
     return { erro: { erro: 'não consegui falar com ' + nome }, status: 502 };
@@ -88,8 +88,31 @@ async function baixa(url, nome) {
   if (!up.ok) return { erro: { erro: nome + ' respondeu HTTP ' + up.status }, status: 502 };
   let corpo;
   try { corpo = await up.json(); } catch { return { erro: { erro: 'resposta inválida de ' + nome }, status: 502 }; }
-  if (!corpo || !Array.isArray(corpo.data)) return { erro: { erro: 'formato inesperado de ' + nome }, status: 502 };
-  return { dados: corpo.data };
+  const lista = Array.isArray(corpo) ? corpo : corpo && corpo.data;   // algumas rotas devolvem a lista pura
+  if (!Array.isArray(lista)) return { erro: { erro: 'formato inesperado de ' + nome }, status: 502 };
+  return { dados: lista };
+}
+
+// calendário de episódios do SuperFlix (calendario.php): séries, animes e doramas com data de estreia.
+// Só passam datas, IDs numéricos da TMDB e caminhos de imagem seguros; o resto é descartado.
+const ORIGEM_CALENDARIO = 'https://superflixapi.fun/calendario.php';
+const CALENDARIO_CACHE_SEGUNDOS = 3600;
+const IMG_OK = /^\/[A-Za-z0-9_.-]{1,80}$/;
+function compactaEpisodio(x) {
+  if (!x || !/^\d{1,9}$/.test(String(x.tmdb_id || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(x.air_date || '')) return null;
+  return {
+    id: String(x.tmdb_id), t: txt(x.title, 120), ep: txt(x.episode, 120), s: Number(x.season) || 0, n: Number(x.number) || 0, d: x.air_date,
+    ty: [2, 3, 5].includes(Number(x.type)) ? Number(x.type) : 2,      // 2 série, 3 anime, 5 dorama
+    p: IMG_OK.test(x.poster || '') ? x.poster : '',
+  };
+}
+async function calendario(origin) {
+  const r = await baixa(ORIGEM_CALENDARIO, 'SuperFlix', CALENDARIO_CACHE_SEGUNDOS);
+  if (!r.dados) return json(r.erro, r.status, origin, r.retry ? { 'Retry-After': '10' } : {});
+  const dia = 86400000, agora = Date.now();
+  const de = new Date(agora - 4 * dia).toISOString().slice(0, 10), ate = new Date(agora + 35 * dia).toISOString().slice(0, 10);
+  const itens = r.dados.map(compactaEpisodio).filter(x => x && x.d >= de && x.d <= ate);
+  return json({ gerado: new Date().toISOString(), itens }, 200, origin, { 'Cache-Control': 'public, max-age=300' });
 }
 
 async function agenda(origin) {
@@ -174,10 +197,10 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     const ehTmdb = url.pathname.startsWith('/tmdb/');
     const rota = url.pathname;
-    if (request.method !== 'GET' || (rota !== '/agenda' && rota !== '/canais' && !ehTmdb)) return json({ erro: 'rota inexistente' }, 404, origin);
+    if (request.method !== 'GET' || (rota !== '/agenda' && rota !== '/canais' && rota !== '/calendario' && !ehTmdb)) return json({ erro: 'rota inexistente' }, 404, origin);
     // navegador de outro site: recusa (chamadas sem Origin, como curl, passam para facilitar testes)
     if (origin && !SITES_PERMITIDOS.includes(origin)) return json({ erro: 'site não autorizado' }, 403, origin);
     if (ehTmdb) return tmdb(url, url.searchParams, env, origin);
-    return rota === '/canais' ? canais(origin) : agenda(origin);
+    return rota === '/canais' ? canais(origin) : rota === '/calendario' ? calendario(origin) : agenda(origin);
   },
 };
