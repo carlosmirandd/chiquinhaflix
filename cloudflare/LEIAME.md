@@ -25,7 +25,7 @@ O script:
 
 ## Como funciona
 
-- Rotas: `GET /agenda` (SuperFlix, com a agenda do Rei dos Embeds como reserva se ele falhar), `GET /canais`, `GET /calendario` (episódios que estreiam nos próximos dias, do SuperFlix, em cache por 1 hora) e `GET /tmdb/...` (só caminhos e parâmetros de uma lista fixa: tendências, populares, no ar hoje, busca, detalhes e temporadas; `include_adult` é sempre falso).
+- Rotas: `GET /agenda` (SuperFlix, com a agenda do Rei dos Embeds como reserva se ele falhar), `GET /canais`, `GET /calendario` (episódios do SuperFlix, em cache por 1 hora; `?passado=45` inclui também os dias anteriores, para o calendário do mês) e `GET /tmdb/...` (só caminhos e parâmetros de uma lista fixa: tendências, populares, no ar hoje, busca, detalhes e temporadas; `include_adult` é sempre falso).
 - A resposta do SuperFlix fica em **cache na Cloudflare por 5 minutos**. Muitas aberturas viram uma única chamada ao SuperFlix a cada 5 minutos, o que protege contra o limite de requisições deles.
 - O Worker devolve só os campos usados (nome, esporte, competição, horário, times, escudos e canais) e descarta identificadores inseguros.
 - O CORS vale **só para** `https://carlosmirandd.github.io` e para `localhost` (portas 8000 e 8765). Navegadores de outros sites recebem 403 e nem chegam a chamar o SuperFlix. Se o endereço do site mudar, edite `SITES_PERMITIDOS` em `worker.js` e rode o comando de novo.

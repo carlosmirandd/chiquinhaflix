@@ -1,7 +1,7 @@
 // Service worker do ChiquinhaFlix: deixa o app instalável e abrir sem rede.
 // Guarda só o "esqueleto" do site (HTML, CSS, JS, imagens). Dados e vídeos sempre vão à rede.
-const V = 'chiquinhaflix-v2';
-const BASE = ['./', 'index.html', 'style.css', 'app.js', 'tv.js', 'config.js', 'manifest.webmanifest', 'assets/chiquinha.png', 'assets/nome.png', 'assets/logo.png', 'assets/icon-192.png'];
+const V = 'chiquinhaflix-v3';
+const BASE = ['./', 'index.html', 'style.css', 'app.js', 'tv.js', 'config.js', 'manifest.webmanifest', 'assets/chiquinha.png', 'assets/nome.png', 'assets/logo.png', 'assets/icon-192.png', 'assets/fonts/inter-latin.woff2'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));

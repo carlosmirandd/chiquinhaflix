@@ -1,4 +1,15 @@
+/* Fonte: nos aparelhos da Apple vale a SF Pro do sistema; nos demais, o Inter (a livre mais próxima da SF Pro),
+   hospedado aqui mesmo (assets/fonts, licença OFL), sem chamar nenhum servidor de fontes. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("assets/fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
+  --fonte: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bg: #141414;
   --red: #e50914;
   --mut: #b3b3b3;
@@ -9,7 +20,8 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 html { background: var(--bg); scrollbar-gutter: stable; }
-body { margin: 0; color: #fff; background: var(--bg); font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; }
+body { margin: 0; color: #fff; background: var(--bg); font-family: var(--fonte); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+h1, h2, h3 { letter-spacing: -.015em; }
 body.lock { overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
 a { color: var(--mut); }
@@ -111,6 +123,53 @@ nav#nav button.on { color: #fff; font-weight: 700; background: rgba(120,128,138,
   .nv-sin { color: #d0d0d6; -webkit-line-clamp: 3; max-width: 88%; flex: none; margin-bottom: 14px; }
   .nv .pill { padding: 10px 22px 10px 18px; font-size: .95rem; }
 }
+/* calendário do mês, com as capas das séries de cada dia */
+.grid.cal { display: block; }
+.calnav { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; max-width: 980px; }
+.calnav b { font-size: 1.35rem; }
+.calnav button { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.calnav button:disabled { opacity: .3; cursor: default; }
+.calgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 980px; }
+.calgrid .wd { text-align: center; font-size: .72rem; color: var(--mut); text-transform: uppercase; padding: 4px 0; font-weight: 700; }
+.cd { position: relative; aspect-ratio: 1 / .85; min-width: 0; padding: 0; overflow: hidden; background: #17171b; border: 2px solid transparent; border-radius: 10px; color: #fff; cursor: pointer; }
+.cd.vazio { background: transparent; border-color: rgba(255,255,255,.06); color: #6d6d75; }
+.cd.hoje { border-color: rgba(255,255,255,.5); }
+.cd.sel { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+.cd .pics { position: absolute; inset: 0; display: grid; gap: 1px; }
+.cd .pics.p1 { grid-template-columns: 1fr; }
+.cd .pics.p2, .cd .pics.p3, .cd .pics.p4 { grid-template-columns: repeat(2, 1fr); }
+.cd .pics.p2 { grid-template-rows: 1fr; }
+.cd .pics img { width: 100%; height: 100%; object-fit: cover; display: block; min-height: 0; }
+.cd .pics.p3 img:first-child { grid-row: span 2; }
+.cd::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0) 45%, rgba(0,0,0,.55)); pointer-events: none; }
+.cd.vazio::after { display: none; }
+.cd .n { position: absolute; top: 5px; left: 7px; z-index: 2; font-size: .95rem; font-weight: 800; text-shadow: 0 1px 4px #000; }
+.cd .c { position: absolute; right: 6px; bottom: 5px; z-index: 2; min-width: 22px; padding: 1px 6px; border-radius: 10px; background: var(--red); font-size: .72rem; font-weight: 800; }
+.cd.vazio .n { top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; }
+.calres { margin-top: 6px; }
+h3.dia { scroll-margin-top: 84px; }
+.cd .top { display: contents; }
+.cd .l, .cd .mais { display: none; }
+/* computador: como o calendário do SuperFlix: número, "N lanç." e três capas pequenas com "+N" */
+@media (min-width: 761px) {
+  .calgrid { gap: 8px; }
+  .cd { aspect-ratio: auto; min-height: 112px; text-align: left; padding: 9px 9px 8px; background: #151a24; border: 1.5px solid rgba(255,255,255,.1); display: flex; flex-direction: column; gap: 8px; }
+  .cd::after { display: none; }
+  .cd.vazio { background: rgba(255,255,255,.02); }
+  .cd .top { display: flex; align-items: center; justify-content: space-between; }
+  .cd .n { position: static; font-size: 1rem; text-shadow: none; transform: none; }
+  .cd.vazio .n { color: #6d6d75; font-weight: 600; }
+  .cd .l { display: inline-block; font-size: .78rem; font-weight: 700; color: #f5c542; background: rgba(245,197,66,.14); border-radius: 3px; padding: 1px 6px; }
+  .cd .c { display: none; }
+  .cd .pics { position: static; display: flex !important; align-items: center; gap: 5px; inset: auto; }
+  .cd .pics img { width: 36px; height: 52px; min-height: 0; flex: none; border-radius: 4px; object-fit: cover; display: block !important; }
+  .cd .pics img:nth-child(n+2) { display: block; }
+  .cd .mais { display: inline; font-size: .8rem; font-weight: 700; color: var(--mut); }
+  .cd.hoje { border-color: var(--red); }
+  .cd.hoje .l { color: #ff7b7b; background: rgba(229,9,20,.18); }
+  .cd.sel { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.2); }
+}
+
 /* botão "Próximo episódio" do Continuar assistindo */
 .cell .nx { display: block; width: 100%; margin-top: 9px; background: none; border: 1.5px solid rgba(255,255,255,.28); color: #ddd; border-radius: 6px; padding: 7px 10px; font-size: .8rem; font-weight: 700; cursor: pointer; }
 .cell .nx:hover:not(:disabled) { background: rgba(255,255,255,.12); color: #fff; }
@@ -301,6 +360,12 @@ footer p { margin: 4px 0; }
   .wrap h2 { font-size: 1.2rem; }
   .grid { grid-template-columns: repeat(3, 1fr); gap: 10px 7px; }
   .grid.feed { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .calgrid { gap: 4px; }
+  .cd { aspect-ratio: 1 / 1.45; border-radius: 8px; }
+  .cd .pics { grid-template-columns: 1fr !important; }
+  .cd .pics img:nth-child(n+2) { display: none; }
+  .cd .n { top: 3px; left: 5px; font-size: .85rem; }
+  .cd .c { right: 3px; bottom: 3px; min-width: 18px; padding: 0 5px; font-size: .68rem; }
   #brTabs button { border-radius: 16px; padding: 10px 18px; font-size: 1.02rem; }
   .nv h2 { font-size: 1.35rem; }
   .grid .tile { aspect-ratio: 2 / 3; }

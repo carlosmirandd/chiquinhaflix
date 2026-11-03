@@ -190,19 +190,20 @@ async function loadHoje() {
 /* ---------- em breve ----------
    Calendário de episódios do SuperFlix (séries, animes e doramas), lido pelo Worker (/calendario).
    Os IDs são os da TMDB, os mesmos do catálogo: tocar num cartão abre a série. */
-let calCache = null;
-async function loadCalendario() {
-  if (calCache) return calCache;
+const calCaches = new Map();   // por quantidade de dias passados pedidos
+async function loadCalendario(passado = 4) {
+  if (calCaches.has(passado)) return calCaches.get(passado);
   if (!WORKER) throw new Error('O calendário precisa do Worker da Cloudflare.');
   let r;
-  try { r = await fetch(WORKER + '/calendario'); } catch { throw new Error('Não consegui falar com o calendário.'); }
+  try { r = await fetch(WORKER + '/calendario' + (passado !== 4 ? '?passado=' + (+passado || 4) : '')); } catch { throw new Error('Não consegui falar com o calendário.'); }
   if (!r.ok) throw new Error('O calendário do SuperFlix não respondeu agora (HTTP ' + r.status + '). Tente de novo daqui a pouco.');
   const j = await r.json();
   if (!j || !Array.isArray(j.itens)) throw new Error('O calendário veio em formato inesperado.');
   const s = (v, n) => String(v == null ? '' : v).slice(0, n);
-  calCache = j.itens.filter(x => x && /^\d{1,9}$/.test(x.id || '') && /^\d{4}-\d{2}-\d{2}$/.test(x.d || ''))
+  const itens = j.itens.filter(x => x && /^\d{1,9}$/.test(x.id || '') && /^\d{4}-\d{2}-\d{2}$/.test(x.d || ''))
     .map(x => ({ id: +x.id, t: s(x.t, 120), ep: s(x.ep, 120), s: +x.s || 0, n: +x.n || 0, d: x.d, p: /^\/[A-Za-z0-9_.-]{1,80}$/.test(x.p || '') ? x.p : '' }));
-  return calCache;
+  calCaches.set(passado, itens);
+  return itens;
 }
 const hojeISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const dataLocal = iso => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d); };
@@ -213,9 +214,9 @@ function rotuloDia(iso) {
   return n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : DIAS[dt.getDay()] + ', ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0');
 }
 // uma entrada por série e por dia (novelas têm dezenas de episódios no mesmo dia): fica o menor episódio e "+N"
-function breves(itens, ateDias) {
+function breves(itens, ateDias, comPassado) {
   const mapa = new Map();
-  itens.filter(x => x.d >= hojeISO() && (ateDias == null || diasAte(x.d) <= ateDias))
+  itens.filter(x => (comPassado || x.d >= hojeISO()) && (ateDias == null || diasAte(x.d) <= ateDias))
     .sort((a, b) => a.d.localeCompare(b.d) || a.s - b.s || a.n - b.n)
     .forEach(x => { const k = x.id + '|' + x.d; if (mapa.has(k)) mapa.get(k).mais++; else mapa.set(k, { ...x, mais: 0 }); });
   return [...mapa.values()];
@@ -290,9 +291,9 @@ async function renderBreve() {
 async function conteudoBreve() {
   const tab = brTab, box = $('grid');
   if (nvObs) nvObs.disconnect();
-  box.className = tab === 'cal' ? 'grid' : 'grid feed'; box.innerHTML = ''; $('msg').textContent = 'Carregando...';
+  box.className = tab === 'cal' ? 'grid cal' : 'grid feed'; box.innerHTML = ''; $('msg').textContent = 'Carregando...';
   let pop = [], cal = [];
-  try { [pop, cal] = await Promise.all([loadPopulares().catch(() => []), tab === 'alta' ? [] : loadCalendario()]); }
+  try { [pop, cal] = await Promise.all([loadPopulares().catch(() => []), tab === 'alta' ? [] : loadCalendario(tab === 'cal' ? 45 : 4)]); }
   catch (e) { if (tab === brTab) $('msg').textContent = e.message; return; }
   if (tab !== brTab) return;   // trocou de aba enquanto carregava
   $('msg').textContent = '';
@@ -322,15 +323,66 @@ async function conteudoBreve() {
     if (!lista.length) $('msg').textContent = 'Nada marcado para os próximos dias.';
     return;
   }
-  // calendário completo, dia a dia; dentro de cada dia as relevantes vêm primeiro
+  viewCalendario(box, cal);
+}
+
+// Calendário de verdade: grade do mês com as capas das séries de cada dia; ao tocar num dia, a lista dele aparece embaixo.
+// Dentro de cada dia as séries relevantes vêm primeiro.
+function viewCalendario(box, cal) {
   const pos = posicaoNoTop();
-  const todos = breves(cal).sort((a, b) => a.d.localeCompare(b.d) || (pos.has(a.id) ? pos.get(a.id) : 9999) - (pos.has(b.id) ? pos.get(b.id) : 9999) || a.t.localeCompare(b.t));
-  let dia = '';
-  todos.forEach(x => {
-    if (x.d !== dia) { dia = x.d; const dt = dataLocal(x.d); box.insertAdjacentHTML('beforeend', '<h3 class="dia">' + esc(rotuloDia(x.d)) + (diasAte(x.d) > 1 ? '' : ' · ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')) + '</h3>'); }
-    box.appendChild(tileBreve(x, true));
-  });
-  if (!todos.length) $('msg').textContent = 'Nada marcado para os próximos dias.';
+  const dias = new Map();
+  breves(cal, null, true).forEach(x => { if (!dias.has(x.d)) dias.set(x.d, []); dias.get(x.d).push(x); });
+  dias.forEach(l => l.sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 9999) - (pos.has(b.id) ? pos.get(b.id) : 9999) || a.t.localeCompare(b.t)));
+  if (!dias.size) { $('msg').textContent = 'Nada marcado para os próximos dias.'; return; }
+  const meses = [...new Set([hojeISO().slice(0, 7), ...[...dias.keys()].map(d => d.slice(0, 7))])].sort();
+  let sel = dias.has(hojeISO()) ? hojeISO() : [...dias.keys()].sort()[0];
+  let mes = sel.slice(0, 7);
+
+  box.className = 'grid cal';
+  box.innerHTML = '<div class="calnav"><button class="prev" aria-label="Mês anterior">‹</button><b></b><button class="next" aria-label="Próximo mês">›</button></div>'
+    + '<div class="calgrid"></div><h3 class="dia"></h3><div class="grid calres"></div>';
+  const grade = box.querySelector('.calgrid'), titulo = box.querySelector('h3.dia'), res = box.querySelector('.calres');
+
+  const lista = rolar => {   // séries do dia selecionado
+    const l = dias.get(sel) || [];
+    const dt = dataLocal(sel);
+    titulo.textContent = rotuloDia(sel) + (![0, 1].includes(diasAte(sel)) ? '' : ' · ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')) + (l.length ? ' · ' + l.length + (l.length === 1 ? ' série' : ' séries') : '');
+    res.innerHTML = '';
+    l.forEach(x => res.appendChild(tileBreve(x, true)));
+    if (!l.length) res.innerHTML = '<p class="agmeta">Nada marcado para este dia.</p>';
+    if (rolar) titulo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const desenha = () => {
+    const [a, m] = mes.split('-').map(Number);
+    box.querySelector('.calnav b').textContent = MESES[m - 1][0].toUpperCase() + MESES[m - 1].slice(1) + ' ' + a;
+    box.querySelector('.prev').disabled = mes <= meses[0];
+    box.querySelector('.next').disabled = mes >= meses[meses.length - 1];
+    grade.innerHTML = DIAS.map(d => '<span class="wd">' + d + '</span>').join('');
+    const primeiro = new Date(a, m - 1, 1).getDay(), total = new Date(a, m, 0).getDate();
+    for (let i = 0; i < primeiro; i++) grade.appendChild(document.createElement('span'));
+    for (let d = 1; d <= total; d++) {
+      const iso = mes + '-' + String(d).padStart(2, '0');
+      const l = dias.get(iso) || [];
+      const b = document.createElement('button');
+      b.className = 'cd' + (l.length ? '' : ' vazio') + (iso === hojeISO() ? ' hoje' : '') + (iso === sel ? ' sel' : '');
+      b.dataset.d = iso;
+      const comCapa = l.filter(x => x.p);
+      const capas = comCapa.slice(0, 3).map(x => '<img loading="lazy" referrerpolicy="no-referrer" alt="" src="' + esc(IMG + 'w185' + x.p) + '">').join('');
+      b.innerHTML = '<span class="top"><span class="n">' + d + '</span>' + (l.length ? '<span class="l">' + l.length + ' lanç.</span>' : '') + '</span>'
+        + (capas ? '<span class="pics">' + capas + (l.length > 3 ? '<span class="mais">+' + (l.length - 3) + '</span>' : '') + '</span>' : '')
+        + (l.length ? '<span class="c">' + l.length + '</span>' : '');
+      grade.appendChild(b);
+    }
+  };
+  grade.onclick = e => {
+    const b = e.target.closest('.cd'); if (!b) return;
+    sel = b.dataset.d;
+    grade.querySelectorAll('.cd').forEach(x => x.classList.toggle('sel', x === b));
+    lista(true);
+  };
+  box.querySelector('.prev').onclick = () => { mes = meses[Math.max(0, meses.indexOf(mes) - 1)]; desenha(); };
+  box.querySelector('.next').onclick = () => { mes = meses[Math.min(meses.length - 1, meses.indexOf(mes) + 1)]; desenha(); };
+  desenha(); lista(false);
 }
 // detalhes leves de uma série (imagem de fundo, nome e sinopse em português), com cache
 const leves = new Map();

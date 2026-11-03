@@ -106,11 +106,13 @@ function compactaEpisodio(x) {
     p: IMG_OK.test(x.poster || '') ? x.poster : '',
   };
 }
-async function calendario(origin) {
+async function calendario(origin, passadoParam) {
   const r = await baixa(ORIGEM_CALENDARIO, 'SuperFlix', CALENDARIO_CACHE_SEGUNDOS);
   if (!r.dados) return json(r.erro, r.status, origin, r.retry ? { 'Retry-After': '10' } : {});
+  // ?passado=N pede também os N dias anteriores (o calendário do app mostra o mês inteiro); padrão 4, máximo 60
+  const passado = /^\d{1,2}$/.test(passadoParam || '') ? Math.min(60, Number(passadoParam)) : 4;
   const dia = 86400000, agora = Date.now();
-  const de = new Date(agora - 4 * dia).toISOString().slice(0, 10), ate = new Date(agora + 35 * dia).toISOString().slice(0, 10);
+  const de = new Date(agora - passado * dia).toISOString().slice(0, 10), ate = new Date(agora + 35 * dia).toISOString().slice(0, 10);
   const itens = r.dados.map(compactaEpisodio).filter(x => x && x.d >= de && x.d <= ate);
   return json({ gerado: new Date().toISOString(), itens }, 200, origin, { 'Cache-Control': 'public, max-age=300' });
 }
@@ -201,6 +203,6 @@ export default {
     // navegador de outro site: recusa (chamadas sem Origin, como curl, passam para facilitar testes)
     if (origin && !SITES_PERMITIDOS.includes(origin)) return json({ erro: 'site não autorizado' }, 403, origin);
     if (ehTmdb) return tmdb(url, url.searchParams, env, origin);
-    return rota === '/canais' ? canais(origin) : rota === '/calendario' ? calendario(origin) : agenda(origin);
+    return rota === '/canais' ? canais(origin) : rota === '/calendario' ? calendario(origin, url.searchParams.get('passado')) : agenda(origin);
   },
 };
