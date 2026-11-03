@@ -630,10 +630,10 @@ $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); els
 
 /* ---------- agenda esportiva ----------
    A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue
-   lê-la direto. O app pede a lista por um proxy CORS público de terceiros (tenta um por vez,
-   no máximo 3 chamadas por abertura, com cache de 5 minutos). Se nenhum responder, usa a
-   última agenda salva neste navegador e, por fim, o agenda.json do site.
-   Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de canal no player. */
+   lê-la direto. Um Worker da Cloudflare (cloudflare/worker.js) faz a chamada pelo servidor e
+   devolve só o que o app usa; o endereço dele fica em config.js. O app mostra na hora o que
+   já está salvo (cache do navegador ou agenda.json do site) e atualiza pelo Worker em segundo
+   plano. Cada evento abre pelo embed /eventos/{id}, e dá pra trocar de canal no player. */
 let agenda = null, stSel = '', spSel = '';
 const ST = { live: 'AO VIVO', upcoming: 'EM BREVE', finished: 'FINALIZADO' };
 const ST_ORDEM = { live: 0, upcoming: 1, finished: 2 };
@@ -648,39 +648,34 @@ function quando(d) {
   const hora = t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   return (dia === 0 ? 'Hoje' : dia === 1 ? 'Amanhã' : dia === -1 ? 'Ontem' : t.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' · ' + hora;
 }
-const LISTA_EVENTOS = 'https://superflixapi.fun/lista?category=eventos&format=json';
-const PROXIES = [
-  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
-  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u)
-];
+// endereço do Worker da Cloudflare (config.js, gerado por cloudflare/publicar.py); vazio = só agenda.json
+const AGENDA_URL = String(window.CHIQUINHA_AGENDA_URL || '').replace(/\/+$/, '');
 const AG_CACHE = 'agenda_cache_v2';
 const ID_OK = /^[A-Za-z0-9_-]{1,120}$/;
 let agUltima = 0, agErro = '', agFonte = '';
-// só guarda o que o app usa; descarta identificadores e canais que não sejam seguros
-function compactaEvento(e) {
-  const id = e.public_slug || e.base_public_slug || e.slug || '';
-  if (!ID_OK.test(id)) return null;
-  const canais = (e.embeds || []).filter(m => m.type === 'channel' && /^[A-Za-z0-9_-]{1,60}$/.test(m.slug || '')).map(m => [m.provider || m.slug, m.slug, m.quality || '']);
-  return { i: id, t: e.title || id, st: e.status || 'upcoming', sp: e.category || '', c: e.competition || '', d: e.start_time || '', a: e.time1_name || '', b: e.time2_name || '', la: e.time1 || '', lb: e.time2 || '', el: e.event_logo || '', e: canais };
+// o Worker já devolve o formato compacto; aqui se confere de novo e se descarta o que não for seguro
+function limpaEvento(e) {
+  if (!e || !ID_OK.test(e.i || '')) return null;
+  const s = v => typeof v === 'string' ? v : '';
+  const canais = (Array.isArray(e.e) ? e.e : []).filter(c => Array.isArray(c) && /^[A-Za-z0-9_-]{1,60}$/.test(c[1] || '')).map(c => [s(c[0]) || c[1], c[1], s(c[2])]);
+  return { i: e.i, t: s(e.t) || e.i, st: ['live', 'upcoming', 'finished'].includes(e.st) ? e.st : 'upcoming', sp: s(e.sp), c: s(e.c), d: s(e.d), a: s(e.a), b: s(e.b), la: s(e.la), lb: s(e.lb), el: s(e.el), e: canais };
 }
-async function viaProxy() {
-  for (const monta of PROXIES) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 6000);
-    try {
-      const r = await fetch(monta(LISTA_EVENTOS), { signal: ctl.signal, cache: 'no-store' });
-      if (!r.ok) continue;
-      const j = await r.json();
-      if (j && Array.isArray(j.data)) return { gerado: new Date().toISOString(), eventos: j.data.map(compactaEvento).filter(Boolean) };
-    } catch {} finally { clearTimeout(t); }
-  }
-  return null;
+async function viaWorker() {
+  if (!AGENDA_URL) return null;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(AGENDA_URL + '/agenda', { signal: ctl.signal, cache: 'no-store' });
+    if (!r.ok) { agErro = 'o Worker respondeu HTTP ' + r.status; return null; }
+    const j = await r.json();
+    if (!j || !Array.isArray(j.eventos)) { agErro = 'resposta inesperada do Worker'; return null; }
+    return { gerado: j.gerado && !isNaN(new Date(j.gerado)) ? j.gerado : new Date().toISOString(), eventos: j.eventos.map(limpaEvento).filter(Boolean) };
+  } catch { agErro = 'não consegui falar com o Worker'; return null; } finally { clearTimeout(t); }
 }
-const AG_FALHA = 'agenda_proxy_falha';
+const AG_FALHA = 'agenda_worker_falha';
 let agTentando = false;
 // base rápida: o que já está salvo (cache do navegador ou agenda.json do site), a mais nova das duas.
-// Retorna true se o cache for recente o bastante para nem tentar os proxies.
+// Retorna true se o cache for recente o bastante para nem chamar o Worker.
 async function loadBase() {
   agErro = '';
   const cache = get(AG_CACHE, null);
@@ -727,14 +722,14 @@ async function renderAgenda(forcar = false) {
   $('agMeta').textContent = 'Carregando...'; $('aglist').innerHTML = '';
   $('agRefresh').onclick = () => { if (!agTentando && Date.now() - agUltima > 10000) renderAgenda(true); };
   const fresca = await loadBase();
-  montaAgenda();                       // já mostra o que existe, sem esperar os proxies
-  if (fresca && !forcar) return;
-  if (!forcar && Date.now() - get(AG_FALHA, 0) < 60 * 60000) { agErro = 'proxies públicos fora do ar; nova tentativa em até 1 h (Atualizar força)'; renderAgList(); return; }
+  montaAgenda();                       // já mostra o que existe, sem esperar o Worker
+  if (!AGENDA_URL || (fresca && !forcar)) return;    // sem Worker configurado: só o que já existe
+  if (!forcar && Date.now() - get(AG_FALHA, 0) < 5 * 60000) { agErro = 'Worker indisponível há pouco; nova tentativa em até 5 min (Atualizar força)'; renderAgList(); return; }
   agUltima = Date.now(); agTentando = true; renderAgList();
-  const nova = await viaProxy();
+  const nova = await viaWorker();
   agTentando = false;
-  if (nova) { agenda = nova; agFonte = 'proxy'; agErro = ''; set(AG_CACHE, nova); set(AG_FALHA, 0); montaAgenda(); }
-  else { agErro = 'os proxies públicos não responderam'; set(AG_FALHA, Date.now()); renderAgList(); }
+  if (nova) { agenda = nova; agFonte = 'worker'; agErro = ''; set(AG_CACHE, nova); set(AG_FALHA, 0); montaAgenda(); }
+  else { set(AG_FALHA, Date.now()); renderAgList(); }
 }
 function renderAgList() {
   const min = agenda.gerado ? Math.round((Date.now() - new Date(agenda.gerado)) / 60000) : null;
@@ -745,10 +740,10 @@ function renderAgList() {
     .sort((a, b) => (ST_ORDEM[a.st] - ST_ORDEM[b.st]) || (a.st === 'finished' ? dataEv(b.d) - dataEv(a.d) : dataEv(a.d) - dataEv(b.d)));
   const box = $('aglist');
   box.innerHTML = '';
-  const origem = { proxy: 'Direto do SuperFlix (via proxy)', cache: 'Direto do SuperFlix (via proxy)', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
+  const origem = { worker: 'Direto do SuperFlix (via Cloudflare)', cache: 'Direto do SuperFlix (via Cloudflare)', salva: 'Última agenda salva neste navegador', arquivo: 'Agenda publicada no site' }[agFonte] || '';
   if (min === null) $('agMeta').textContent = 'Não consegui carregar a agenda' + (agErro ? ': ' + agErro : '') + '. Toque em Atualizar daqui a pouco.';
   else $('agMeta').textContent = origem + ' · atualizada ' + (min < 1 ? 'agora há pouco' : min < 60 ? 'há ' + min + ' min' : min < 2880 ? 'há ' + Math.round(min / 60) + ' h' : 'há ' + Math.round(min / 1440) + ' dias')
-    + (agTentando ? ' · tentando atualizar pelos proxies…' : agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';
+    + (agTentando ? ' · tentando atualizar pela Cloudflare…' : agErro ? ' · ' + agErro : '') + (velha ? ' · status ajustado pelo horário' : '') + ' · horários no seu fuso';
   lista.forEach(e => {
     const d = document.createElement('div');
     d.className = 'ev';
