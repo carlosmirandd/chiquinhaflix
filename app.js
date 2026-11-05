@@ -1144,6 +1144,7 @@ let pstate = null;
 function showEmbed(url, title, hash) {
   if (!pstate || pstate.url !== url) $('pframe').innerHTML = embed(url);
   pstate = { url, title, hash };
+  try { sessionStorage.setItem('playerEm', Date.now()); } catch {}   // para reconhecer a volta do anúncio
   $('ptitle').textContent = title;
   place();
 }
@@ -1162,6 +1163,34 @@ function place() {
 $('pExpand').onclick = () => { if (pstate) location.hash = pstate.hash; };
 $('pClose').onclick = stopEmbed;
 $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); else route(); };
+
+/* Depois do anúncio: ao dar play, o player abre uma janela de propaganda. No celular (principalmente no app
+   instalado) ela toma conta da tela e é preciso voltar. Ao voltar, o app destaca o botão "Recarregar player",
+   que reabre o player no lugar, sem fechar e reabrir o episódio. */
+const ROTULO_RECARREGAR = '↻ Recarregar player', ROTULO_VOLTOU = '↻ Voltou do anúncio? Recarregar player';
+const noCelular = () => matchMedia('(pointer: coarse)').matches;
+let dicaTimer;
+function dicaRecarregar() {
+  if (!pstate || location.hash !== pstate.hash) return;
+  const b = $('pReload');
+  b.classList.add('dica'); b.textContent = ROTULO_VOLTOU;
+  clearTimeout(dicaTimer);
+  dicaTimer = setTimeout(() => { b.classList.remove('dica'); b.textContent = ROTULO_RECARREGAR; }, 15000);
+}
+$('pReload').onclick = () => {
+  if (!pstate) return;
+  $('pframe').innerHTML = embed(pstate.url);
+  clearTimeout(dicaTimer); $('pReload').classList.remove('dica'); $('pReload').textContent = ROTULO_RECARREGAR;
+};
+let escondidoEm = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { escondidoEm = Date.now(); return; }
+  if (noCelular() && escondidoEm && Date.now() - escondidoEm > 1500) dicaRecarregar();   // voltou de outra tela/janela
+});
+// se o anúncio recarregou o app inteiro, o endereço do player continua na barra: o app reabre o episódio e avisa
+try {
+  if (noCelular() && Date.now() - (+sessionStorage.getItem('playerEm') || 0) < 180000 && /^#(ver|assistir|canal|evento)=/.test(location.hash)) setTimeout(dicaRecarregar, 2500);
+} catch {}
 
 /* ---------- agenda esportiva ----------
    A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue

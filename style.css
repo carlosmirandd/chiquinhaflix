@@ -452,3 +452,7 @@ html.tv .tile:focus, html.tv .ch:focus { transform: scale(1.07); }
 html.tv .ep:focus, html.tv .ev:focus, html.tv .li:focus { background: #2f2f36; }
 html.tv .pill:focus, html.tv nav#nav button:focus { background: #fff !important; color: #000 !important; }
 html.tv footer a { color: #fff; }
+
+/* destaque do "Recarregar player" ao voltar do anúncio */
+@keyframes pulso { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,9,20,.65); } 50% { box-shadow: 0 0 0 9px rgba(229,9,20,0); } }
+.pill.dica { background: var(--red); color: #fff; animation: pulso 1.4s ease-in-out infinite; }
