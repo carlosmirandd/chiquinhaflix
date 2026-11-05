@@ -1134,7 +1134,10 @@ async function openCanal(slug) {
 // Sem `sandbox` de propósito: o player de terceiros detecta o isolamento e se recusa a tocar ("Sandbox detectado"),
 // e a janela de propaganda que ele abre ao dar play faz parte do funcionamento dele.
 try { localStorage.removeItem('bloqueiaPopup'); } catch {}   // preferência de uma versão anterior
-const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
+// Opções do player (hashes no fim do endereço, documentadas por ele): #noEpList esconde a lista de episódios dele
+// (o app já tem a própria; só nas séries), #noLink tira o botão de link externo e #color deixa no vermelho do site.
+const opcoesPlayer = url => url + (/\/serie\//.test(url) ? '#noEpList' : '') + '#noLink#color:e50914';
+const embed = url => '<iframe src="' + opcoesPlayer(url) + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
 
 /* ---------- player persistente ----------
    O iframe vive em #pbox, fora das telas. Na tela do player o #pbox é posicionado em cima do
