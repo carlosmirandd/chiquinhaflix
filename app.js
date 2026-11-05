@@ -172,6 +172,34 @@ $('nav').onclick = navClick;
 $('tabbar').onclick = navClick;
 $('logo').onclick = () => { page = 'home'; query = ''; $('q').value = ''; go(); };
 
+/* ---------- o que o player tem ----------
+   A TMDB lista tudo, mas o SuperFlix só abre o que ele tem ("título não disponível ainda"). O Worker devolve os IDs
+   que ele tem (/disponiveis); os catálogos (Top 10, Em alta, gêneros, busca...) escondem o que não está na lista.
+   Sem a lista (falha, limite de requisições) nada é escondido. Nas estreias o título aparece, marcado. */
+const DISP_KEY = 'disp_v1';
+let dispSets = null, dispPromessa = null;
+const montaDisp = d => ({ f: d && d.f && d.f.length > 200 ? new Set(d.f) : null, s: d && d.s && d.s.length > 200 ? new Set(d.s) : null });
+function loadDisponiveis() {
+  if (dispPromessa) return dispPromessa;
+  dispPromessa = (async () => {
+    const c = get(DISP_KEY, null);
+    if (c && Date.now() - c.t < 6 * 3600000) return (dispSets = montaDisp(c));
+    if (!WORKER) return null;
+    try {
+      const r = await fetch(WORKER + '/disponiveis');
+      if (!r.ok) throw new Error('lista indisponível');
+      const j = await r.json();
+      const d = { t: Date.now(), f: Array.isArray(j.filmes) ? j.filmes : null, s: Array.isArray(j.series) ? j.series : null };
+      set(DISP_KEY, d);
+      return (dispSets = montaDisp(d));
+    } catch { return c ? (dispSets = montaDisp(c)) : null; }
+  })();
+  return dispPromessa;
+}
+const dispAgora = () => Promise.race([loadDisponiveis(), new Promise(r => setTimeout(() => r(null), 5000))]);   // espera até 5 s
+const temNoPlayer = (s, d) => { const conj = d && (s.mt ? d.f : d.s); return !conj || conj.has(s.id); };
+const semPlayerFilme = id => !!(dispSets && dispSets.f && !dispSets.f.has(id));
+
 /* ---------- dados ---------- */
 // junta listas da TMDB: tira repetidos e quem não tem pôster
 function unicas(lotes) {
@@ -180,14 +208,14 @@ function unicas(lotes) {
 }
 async function loadPopulares() {
   if (populares) return populares;
-  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/tv/week?page=' + p)), ...[1, 2, 3, 4].map(p => api('/tv/popular?page=' + p))]);
-  populares = unicas(lotes).slice(0, 150);
+  const [lotes, d] = await Promise.all([Promise.all([...[1, 2].map(p => api('/trending/tv/week?page=' + p)), ...[1, 2, 3, 4].map(p => api('/tv/popular?page=' + p))]), dispAgora()]);
+  populares = unicas(lotes).filter(s => temNoPlayer(s, d)).slice(0, 150);
   return populares;
 }
 async function loadHoje() {
   if (hojeCache) return hojeCache;
-  const lotes = await Promise.all([1, 2].map(p => api('/tv/airing_today?timezone=America/Sao_Paulo&page=' + p)));
-  hojeCache = unicas(lotes).sort((a, b) => b.weight - a.weight);
+  const [lotes, d] = await Promise.all([Promise.all([1, 2].map(p => api('/tv/airing_today?timezone=America/Sao_Paulo&page=' + p))), dispAgora()]);
+  hojeCache = unicas(lotes).filter(s => temNoPlayer(s, d)).sort((a, b) => b.weight - a.weight);
   return hojeCache;
 }
 /* ---------- em breve ----------
@@ -253,7 +281,7 @@ function breves(itens, ateDias, comPassado) {
   return [...mapa.values()];
 }
 function tileBreve(x, semDia) {
-  const sub = x.filme ? 'Filme' : 'T' + x.s + ':E' + x.n + (x.mais ? ' +' + x.mais : '') + (x.ep ? ' · ' + x.ep : '');
+  const sub = x.filme ? 'Filme' + (semPlayerFilme(x.id) ? ' · ainda sem player' : '') : 'T' + x.s + ':E' + x.n + (x.mais ? ' +' + x.mais : '') + (x.ep ? ' · ' + x.ep : '');
   const t = tile({ id: x.id, mt: x.filme ? 1 : 0, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '' }, sub);
   if (!semDia) t.insertAdjacentHTML('beforeend', '<span class="when">' + esc(rotuloDia(x.d)) + '</span>');
   return t;
@@ -276,7 +304,7 @@ function emBreveOrdenado(cal, ateDias) {
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 function rotuloLancamento(x) {
   const n = diasAte(x.d), dt = dataLocal(x.d);
-  if (x.filme) return 'Filme · estreia' + (n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()]);
+  if (x.filme) return 'Filme · estreia' + (n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()]) + (semPlayerFilme(x.id) ? ' · ainda sem player' : '');
   const tipo = x.n === 1 ? (x.s === 1 ? 'Estreia' : 'Nova temporada') : 'Novo episódio';
   const quando = n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()];
   return tipo + quando + (x.n === 1 ? '' : ' · T' + x.s + ':E' + x.n);
@@ -716,20 +744,21 @@ const tempoTxt = min => !min ? '' : min < 60 ? min + ' min' : (Math.floor(min / 
 let filmesPop = null, filmesListas = null;
 async function loadFilmes() {
   if (filmesPop) return filmesPop;
-  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/movie/week?page=' + p)), ...[1, 2, 3].map(p => api('/movie/popular?page=' + p))]);
-  filmesPop = unicasFilmes(lotes).slice(0, 120);
+  const [lotes, d] = await Promise.all([Promise.all([...[1, 2].map(p => api('/trending/movie/week?page=' + p)), ...[1, 2, 3].map(p => api('/movie/popular?page=' + p))]), dispAgora()]);
+  filmesPop = unicasFilmes(lotes).filter(s => temNoPlayer(s, d)).slice(0, 120);
   return filmesPop;
 }
 // em cartaz, lançamentos dos últimos ~3 meses e estreias que vêm aí (cada lista que falhar fica vazia)
 async function loadFilmesListas() {
   if (filmesListas) return filmesListas;
   const vazia = () => ({ results: [] });
+  const d = await dispAgora();
   const [cartaz, recentes, breve] = await Promise.all([
     api('/movie/now_playing?region=BR&page=1').catch(vazia),
     api('/discover/movie?sort_by=popularity.desc&vote_count.gte=20&primary_release_date.gte=' + isoMais(-100) + '&primary_release_date.lte=' + hojeISO() + '&page=1').catch(vazia),
     api('/movie/upcoming?region=BR&page=1').catch(vazia),
   ]);
-  filmesListas = { cartaz: unicasFilmes([cartaz]), recentes: unicasFilmes([recentes]), breve: unicasFilmes([breve]) };
+  filmesListas = { cartaz: unicasFilmes([cartaz]).filter(s => temNoPlayer(s, d)), recentes: unicasFilmes([recentes]).filter(s => temNoPlayer(s, d)), breve: unicasFilmes([breve]) };   // as estreias ficam, marcadas
   return filmesListas;
 }
 const filmeCache = new Map();
@@ -748,7 +777,7 @@ async function loadFilme(id) {
 }
 function tileFilmeBreve(s) {
   const dt = dataLocal(s.data);
-  const t = tile(s, 'Estreia ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0'));
+  const t = tile(s, 'Estreia ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0') + (semPlayerFilme(s.id) ? ' · ainda sem player' : ''));
   t.insertAdjacentHTML('beforeend', '<span class="when">' + esc(rotuloDia(s.data)) + '</span>');
   return t;
 }
@@ -803,7 +832,10 @@ async function openFilme(id) {
     + (s.status ? '<p><span class="k">Situação:</span> ' + esc(STATUS[s.status] || s.status) + '</p>' : '');
   $('mSin').textContent = d.show.summary;
   if (d.show.tr) pt(d.show.summary).then(t => { if (mc && mc.d === d) $('mSin').textContent = t; });
+  await dispAgora();
+  if (modal.hidden || location.hash !== '#filme=' + id) return;
   if (d.tagline) $('mCur').textContent = d.tagline;
+  if (semPlayerFilme(s.id)) $('mCur').textContent = 'Ainda não disponível no player' + (d.tagline ? ' · ' + d.tagline : '');
   renderFavBtn();
 }
 // player do filme: usa a tela do player no modo "canal" (sem episódios)
@@ -834,8 +866,8 @@ async function renderGrid() {
   try {
     if (query) {   // séries e filmes juntos, do mais popular para o menos
       const q = encodeURIComponent(query.slice(0, 100));
-      const [tv, fi] = await Promise.all([api('/search/tv?query=' + q), api('/search/movie?query=' + q).catch(() => ({ results: [] }))]);
-      list = [...(tv.results || []).map(slim), ...(fi.results || []).map(slimFilme)].filter(s => s.poster && playable(s)).sort((a, b) => b.weight - a.weight);
+      const [tv, fi, d] = await Promise.all([api('/search/tv?query=' + q), api('/search/movie?query=' + q).catch(() => ({ results: [] })), dispAgora()]);
+      list = [...(tv.results || []).map(slim), ...(fi.results || []).map(slimFilme)].filter(s => s.poster && playable(s) && temNoPlayer(s, d)).sort((a, b) => b.weight - a.weight);
     }
     else if (lista) list = (await loadPopulares()).slice(0, 30);
     else if (page === 'hoje') list = await loadHoje();

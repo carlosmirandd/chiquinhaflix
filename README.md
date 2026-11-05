@@ -28,6 +28,7 @@ Esta versão é um **site de verdade**: HTML, CSS e JavaScript puros, sem build 
 - **Novidades**: estreias de filmes e novos episódios das séries mais relevantes, o que está em alta e um **calendário do mês** com as capas de cada dia (com filtro de séries e filmes).
 - **Filmes**: aba com em cartaz, lançamentos recentes e em breve nos cinemas.
 - **Ao vivo**: canais, com o programa que está no ar, e agenda esportiva. Os canais adultos ficam atrás de um filtro **18+** com confirmação.
+- O site **esconde dos catálogos o que o player ainda não tem** (usa a lista de títulos disponíveis do serviço). As estreias aparecem, marcadas como "ainda sem player". Se a lista não puder ser lida, nada é escondido.
 - **Minha lista** e **histórico**, guardados no `localStorage`: nada sai do seu navegador.
 - **Miniplayer** flutuante, para continuar assistindo enquanto navega.
 - **Busca** com filtro de séries e filmes.

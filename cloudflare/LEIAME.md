@@ -28,6 +28,7 @@ Nas próximas vezes, para atualizar só o código, basta `python cloudflare/publ
 | `/tmdb/...` | consultas à TMDB, só de uma lista fixa de caminhos e parâmetros (conteúdo adulto sempre desligado) |
 | `/canais` | canais ao vivo, com o programa no ar agora |
 | `/agenda` | eventos esportivos, com uma fonte de reserva se a principal falhar |
+| `/disponiveis` | IDs de filmes e séries que o player tem (cache de 6 horas), para o site esconder o que ainda não abre |
 | `/calendario` | episódios que estreiam, por dia (`?passado=45` inclui os dias anteriores) |
 
 - As respostas ficam em cache na Cloudflare (de 5 minutos a 1 hora), então muitas aberturas viram poucas consultas às fontes.

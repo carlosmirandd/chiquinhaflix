@@ -196,6 +196,27 @@ async function tmdb(url, params, env, origin) {
   return json(corpo, up.status, origin, { 'Cache-Control': 'public, max-age=300' });
 }
 
+// IDs da TMDB que o SuperFlix tem hoje (filmes e séries/animes/doramas), para o site esconder o que o player ainda
+// não abre. Cada lista fica em cache por 6 horas; se qualquer uma falhar, essa parte vem como null (o site não filtra).
+const LISTA_SF = 'https://superflixapi.fun/lista?type=tmdb&format=json&category=';
+const DISP_CACHE_SEGUNDOS = 21600;
+const idsDe = lista => lista.map(x => Number(x && typeof x === 'object' ? (x.tmdb_id ?? x.id) : x)).filter(n => Number.isInteger(n) && n > 0);
+async function pegaIds(categorias) {
+  const todos = new Set();
+  for (const c of categorias) {   // uma de cada vez, para não bater no limite de requisições deles
+    const r = await baixa(LISTA_SF + c, 'SuperFlix', DISP_CACHE_SEGUNDOS);
+    if (!r.dados) return null;
+    idsDe(r.dados).forEach(n => todos.add(n));
+  }
+  return [...todos];
+}
+async function disponiveis(origin) {
+  const filmes = await pegaIds(['filme']);
+  const series = await pegaIds(['serie', 'animes', 'dorama']);
+  if (!filmes && !series) return json({ erro: 'não consegui a lista do SuperFlix' }, 502, origin);
+  return json({ gerado: new Date().toISOString(), filmes, series }, 200, origin, { 'Cache-Control': 'public, max-age=300' });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -204,10 +225,10 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     const ehTmdb = url.pathname.startsWith('/tmdb/');
     const rota = url.pathname;
-    if (request.method !== 'GET' || (rota !== '/agenda' && rota !== '/canais' && rota !== '/calendario' && !ehTmdb)) return json({ erro: 'rota inexistente' }, 404, origin);
+    if (request.method !== 'GET' || (rota !== '/agenda' && rota !== '/canais' && rota !== '/calendario' && rota !== '/disponiveis' && !ehTmdb)) return json({ erro: 'rota inexistente' }, 404, origin);
     // navegador de outro site: recusa (chamadas sem Origin, como curl, passam para facilitar testes)
     if (origin && !SITES_PERMITIDOS.includes(origin)) return json({ erro: 'site não autorizado' }, 403, origin);
     if (ehTmdb) return tmdb(url, url.searchParams, env, origin);
-    return rota === '/canais' ? canais(origin) : rota === '/calendario' ? calendario(origin, url.searchParams.get('passado')) : agenda(origin);
+    return rota === '/disponiveis' ? disponiveis(origin) : rota === '/canais' ? canais(origin) : rota === '/calendario' ? calendario(origin, url.searchParams.get('passado')) : agenda(origin);
   },
 };
