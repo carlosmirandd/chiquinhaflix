@@ -114,7 +114,7 @@ async function ptMany(items, apply) {
 let page = 'home', query = '', gsel = '', rendered = '', under = 'home', pending = null, cur = null;
 let populares = null, hojeCache = null, heroShow = null;
 const showCache = new Map();
-const TITULOS = { home: 'Início', filmes: 'Filmes', hoje: 'No ar hoje', breve: 'Em breve', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
+const TITULOS = { home: 'Início', series: 'Séries', filmes: 'Filmes', hoje: 'No ar hoje', breve: 'Em breve', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
 let homeTk = 0;   // descarta o "Em breve" que chegar depois de a home ser refeita
 
 const SECTIONS = ['home', 'list', 'view', 'vivo'];
@@ -137,12 +137,13 @@ const onType = el => () => { clearTimeout(qt); qt = setTimeout(() => { query = e
 $('q').oninput = onType($('q'));
 $('q2').oninput = onType($('q2'));
 
-const pageKey = () => page === 'busca' ? 'busca:' + query : query ? 'q:' + query : page === 'genero' ? 'g:' + gsel : page;
+let gmisto = true;   // a página de gênero mostra séries e filmes (a partir do Início) ou só séries (a partir de Séries)
+const pageKey = () => page === 'busca' ? 'busca:' + query : query ? 'q:' + query : page === 'genero' ? 'g:' + gsel + (gmisto ? '+' : '') : page;
 async function ensurePage() {
   const k = pageKey();
-  under = (!query && (page === 'home' || page === 'filmes')) ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
+  under = (!query && ['home', 'series', 'filmes'].includes(page)) ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
   syncUI();
-  if (rendered !== k) { rendered = k; await (under === 'home' ? (page === 'filmes' ? renderFilmes() : renderHome()) : under === 'vivo' ? renderVivo() : (page === 'breve' && !query) ? renderBreve() : renderGrid()); }
+  if (rendered !== k) { rendered = k; await (under === 'home' ? (page === 'filmes' ? renderFilmes() : page === 'series' ? renderSeries() : renderHome()) : under === 'vivo' ? renderVivo() : (page === 'breve' && !query) ? renderBreve() : renderGrid()); }
   else only(under);
 }
 async function rotear() {
@@ -539,39 +540,48 @@ function toggleFav(s) {
 }
 
 /* ---------- início ---------- */
-async function renderHome() {
+// Início (misto = true): séries e filmes juntos, como na Netflix. Séries (misto = false): só séries.
+const renderHome = () => renderCatalogo(true);
+const renderSeries = () => renderCatalogo(false);
+// intercala as duas listas (1ª série, 1º filme, 2ª série...), mantendo a ordem de cada uma
+function mistura(a, b) {
+  const out = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); }
+  return out;
+}
+async function renderCatalogo(misto) {
   only('home'); window.scrollTo(0, 0);
   $('rows').innerHTML = ''; $('chips').innerHTML = ''; $('hero').hidden = true; $('msg').textContent = 'Carregando...';
-  let list;
-  try { list = await loadPopulares(); } catch (e) { $('msg').textContent = e.message; return; }
+  let series, filmes = [];
+  try { [series, filmes] = await Promise.all([loadPopulares(), misto ? loadFilmes() : []]); } catch (e) { $('msg').textContent = e.message; return; }
   await Promise.race([migrado, new Promise(r => setTimeout(r, 6000))]);   // lista/histórico antigos
   $('msg').textContent = '';
+  const list = misto ? mistura(series, filmes) : series;   // base do banner, do "Em alta" e dos gêneros
 
   const cont = {};
   list.forEach(s => s.genres.forEach(g => cont[g] = (cont[g] || 0) + 1));
   const top = Object.keys(cont).sort((a, b) => cont[b] - cont[a]);
-  // no celular os botões do topo seguem o app da Netflix: "Novidades" (Em breve, em alta, calendário) e os gêneros
-  const nov = document.createElement('button');
-  nov.textContent = 'Novidades';
-  nov.onclick = () => { page = 'breve'; gsel = ''; query = ''; go(); };
-  $('chips').appendChild(nov);
-  const fil = document.createElement('button');
-  fil.textContent = 'Filmes';
-  fil.onclick = () => { page = 'filmes'; gsel = ''; query = ''; go(); };
-  $('chips').appendChild(fil);
+  // no celular os botões do topo seguem o app da Netflix: Séries, Filmes, Novidades e os gêneros
+  (misto ? [['Séries', 'series'], ['Filmes', 'filmes'], ['Novidades', 'breve']] : [['Início', 'home'], ['Filmes', 'filmes'], ['Novidades', 'breve']]).forEach(([t, p]) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.onclick = () => { page = p; gsel = ''; query = ''; go(); };
+    $('chips').appendChild(b);
+  });
   top.slice(0, 12).forEach(g => {
     const b = document.createElement('button');
     b.textContent = gen(g);
-    b.onclick = () => { page = 'genero'; gsel = g; query = ''; go(); };
+    b.onclick = () => { page = 'genero'; gsel = g; gmisto = misto; query = ''; go(); };
     $('chips').appendChild(b);
   });
 
-  renderHero(list);
+  renderHero(list, misto ? 'Em alta esta semana' : '');
   const rows = [];
   rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => pctAbertos(s.id, s.tot), proximo: true }));
-  rows.push(row('Minha lista', salvos('favs')));
-  rows.push(row('Top 10 séries da semana', list.slice(0, 10), { top10: true }));
-  rows.push(row('Em alta', list.slice(10, 40)));
+  rows.push(row('Minha lista', misto ? salvos('favs') : salvos('favs').filter(x => !x.mt)));
+  rows.push(row('Top 10 séries da semana', series.slice(0, 10), { top10: true }));
+  if (misto) rows.push(row('Top 10 filmes da semana', filmes.slice(0, 10), { top10: true }));
+  rows.push(row('Em alta', misto ? list.slice(20, 60) : list.slice(10, 40)));
   top.slice(0, 7).forEach(g => rows.push(row(gen(g), list.filter(s => s.genres.includes(g)).slice(0, 24))));
   rows.forEach(r => r && $('rows').appendChild(r));
 
@@ -581,7 +591,8 @@ async function renderHome() {
     if (tk !== homeTk) return;
     const r = row('Em breve', emBreveOrdenado(cal, 14).slice(0, 30), { tile: tileBreve, more: () => { page = 'breve'; query = ''; go(); } });
     if (!r) return;
-    const top = [...$('rows').children].find(el => (el.querySelector('h3') || {}).textContent === 'Top 10 séries da semana');
+    const ancora = misto ? 'Top 10 filmes da semana' : 'Top 10 séries da semana';
+    const top = [...$('rows').children].find(el => (el.querySelector('h3') || {}).textContent === ancora);
     if (top) top.after(r); else $('rows').prepend(r);
   }).catch(() => {});
   // entradas do histórico de antes das barras novas não têm o total de episódios: busca e completa
@@ -597,7 +608,7 @@ function metaHero(s, temporadas) {
   return dots([s.mt ? 'Filme' : 'Série', s.genres[0] && gen(s.genres[0]), s.year, temporadas && temporadas + (temporadas > 1 ? ' temporadas' : ' temporada')])
     + (s.rating ? '<span class="badge star">★ ' + esc(s.rating) + '</span>' : '');
 }
-async function renderHero(list) {
+async function renderHero(list, badgeFixo) {
   // sorteia entre os 15 primeiros, de preferência os que têm sinopse e imagem de fundo
   const top = list.slice(0, 15);
   const pool = top.filter(x => x.back && x.summary);
@@ -607,10 +618,11 @@ async function renderHero(list) {
   hero.style.setProperty('--poster', s.big ? 'url("' + s.big + '")' : 'none');
   if (s.back) hero.style.setProperty('--back', 'url("' + s.back + '")'); else hero.style.removeProperty('--back');
   $('heroTitle').textContent = s.name;
+  $('heroTitle').classList.toggle('longo', s.name.length > 20);
   $('heroMeta').innerHTML = metaHero(s, 0);
   $('heroSin').textContent = s.summary;
   const b = $('heroBadge');
-  b.textContent = idx < 10 ? 'Nº ' + (idx + 1) + (s.mt ? ' em filmes da semana' : ' da semana') : (s.rating ? 'Nota ' + s.rating : '');
+  b.textContent = badgeFixo ? badgeFixo : idx < 10 ? 'Nº ' + (idx + 1) + (s.mt ? ' em filmes da semana' : ' da semana') : (s.rating ? 'Nota ' + s.rating : '');
   b.hidden = !b.textContent;
   $('heroFav').textContent = inList(s.id, s.mt) ? '✓ Na minha lista' : '＋ Minha lista';
   document.querySelector('#heroPlay .t-mob').textContent = s.mt ? 'Assistir ao filme' : 'Assistir à série';
@@ -694,7 +706,7 @@ async function renderFilmes() {
   try { [list, listas] = await Promise.all([loadFilmes(), loadFilmesListas()]); } catch (e) { $('msg').textContent = e.message; return; }
   $('msg').textContent = '';
   // botões do topo (celular): voltar para as séries e as novidades
-  [['Séries', 'home'], ['Novidades', 'breve']].forEach(([t, p]) => {
+  [['Início', 'home'], ['Séries', 'series'], ['Novidades', 'breve']].forEach(([t, p]) => {
     const b = document.createElement('button');
     b.textContent = t;
     b.onclick = () => { page = p; query = ''; go(); };
@@ -779,7 +791,10 @@ async function renderGrid() {
     }
     else if (lista) list = (await loadPopulares()).slice(0, 30);
     else if (page === 'hoje') list = await loadHoje();
-    else if (page === 'genero') list = (await loadPopulares()).filter(s => s.genres.includes(gsel));
+    else if (page === 'genero') {   // a partir do Início, séries e filmes; a partir de Séries, só séries
+      const [sr, fi] = await Promise.all([loadPopulares(), gmisto ? loadFilmes().catch(() => []) : []]);
+      list = [...sr, ...fi].filter(s => s.genres.includes(gsel)).sort((a, b) => b.weight - a.weight);
+    }
     else list = salvos('favs');
   } catch (e) { $('msg').textContent = e.message; return; }
   list.forEach(s => $('grid').appendChild(lista ? itemLista(s) : tile(s)));

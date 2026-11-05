@@ -24,9 +24,9 @@ Esta versão é um **site de verdade**: HTML, CSS e JavaScript puros, sem build 
 
 ## O que ele faz
 
-- **Séries e filmes**: banner em destaque, Top 10 da semana, fileiras por gênero, busca, detalhes com elenco e episódios, e "Continuar assistindo" com botão de próximo episódio.
+- **Início** com séries e filmes juntos, como nos grandes serviços: banner em destaque, Top 10 de séries e de filmes da semana, fileiras por gênero e "Continuar assistindo" com botão de próximo episódio. As abas **Séries** e **Filmes** mostram cada catálogo separado. Há busca, detalhes com elenco e episódios, e Minha lista.
 - **Novidades**: estreias e novos episódios das séries mais relevantes, o que está em alta e um **calendário do mês** com as capas de cada dia.
-- **Filmes**: em cartaz, lançamentos recentes e em breve nos cinemas.
+- **Filmes**: aba com em cartaz, lançamentos recentes e em breve nos cinemas.
 - **Ao vivo**: canais, com o programa que está no ar, e agenda esportiva. Os canais adultos ficam atrás de um filtro **18+** com confirmação.
 - **Minha lista** e **histórico**, guardados no `localStorage`: nada sai do seu navegador.
 - **Miniplayer** flutuante, para continuar assistindo enquanto navega.
