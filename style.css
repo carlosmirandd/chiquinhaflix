@@ -329,6 +329,7 @@ footer p { margin: 4px 0; }
 
   .chips { gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 0 var(--pad); margin-top: 72px; scrollbar-width: none; }
   .chips::-webkit-scrollbar { display: none; }
+  .chips button.on { background: #fff; color: #000; border-color: #fff; }
   .chips button { flex: 0 0 auto; background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.2); border-radius: 16px; padding: 10px 20px; font-size: 1rem; font-weight: 700; color: #ddd; cursor: pointer; }
 
   /* hero em cartão vertical */
@@ -452,7 +453,3 @@ html.tv .tile:focus, html.tv .ch:focus { transform: scale(1.07); }
 html.tv .ep:focus, html.tv .ev:focus, html.tv .li:focus { background: #2f2f36; }
 html.tv .pill:focus, html.tv nav#nav button:focus { background: #fff !important; color: #000 !important; }
 html.tv footer a { color: #fff; }
-
-/* destaque do "Recarregar player" ao voltar do anúncio */
-@keyframes pulso { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,9,20,.65); } 50% { box-shadow: 0 0 0 9px rgba(229,9,20,0); } }
-.pill.dica { background: var(--red); color: #fff; animation: pulso 1.4s ease-in-out infinite; }

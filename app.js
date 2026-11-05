@@ -592,6 +592,16 @@ function toggleFav(s) {
 const renderHome = () => renderCatalogo(true);
 const renderSeries = () => renderCatalogo(false);
 // intercala as duas listas (1ª série, 1º filme, 2ª série...), mantendo a ordem de cada uma
+// botões do topo (celular), como no app da Netflix: Início, Séries, Filmes e Novidades, com o atual destacado
+function chipsTopo(ativo) {
+  [['Início', 'home'], ['Séries', 'series'], ['Filmes', 'filmes'], ['Novidades', 'breve']].forEach(([t, p]) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (p === ativo) b.className = 'on';
+    b.onclick = () => { if (p === ativo) { window.scrollTo(0, 0); return; } page = p; gsel = ''; query = ''; go(); };
+    $('chips').appendChild(b);
+  });
+}
 function mistura(a, b) {
   const out = [];
   for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); }
@@ -610,12 +620,7 @@ async function renderCatalogo(misto) {
   list.forEach(s => s.genres.forEach(g => cont[g] = (cont[g] || 0) + 1));
   const top = Object.keys(cont).sort((a, b) => cont[b] - cont[a]);
   // no celular os botões do topo seguem o app da Netflix: Séries, Filmes, Novidades e os gêneros
-  (misto ? [['Séries', 'series'], ['Filmes', 'filmes'], ['Novidades', 'breve']] : [['Início', 'home'], ['Filmes', 'filmes'], ['Novidades', 'breve']]).forEach(([t, p]) => {
-    const b = document.createElement('button');
-    b.textContent = t;
-    b.onclick = () => { page = p; gsel = ''; query = ''; go(); };
-    $('chips').appendChild(b);
-  });
+  chipsTopo(misto ? 'home' : 'series');
   top.slice(0, 12).forEach(g => {
     const b = document.createElement('button');
     b.textContent = gen(g);
@@ -754,12 +759,7 @@ async function renderFilmes() {
   try { [list, listas] = await Promise.all([loadFilmes(), loadFilmesListas()]); } catch (e) { $('msg').textContent = e.message; return; }
   $('msg').textContent = '';
   // botões do topo (celular): voltar para as séries e as novidades
-  [['Início', 'home'], ['Séries', 'series'], ['Novidades', 'breve']].forEach(([t, p]) => {
-    const b = document.createElement('button');
-    b.textContent = t;
-    b.onclick = () => { page = p; query = ''; go(); };
-    $('chips').appendChild(b);
-  });
+  chipsTopo('filmes');
   const cont = {};
   list.forEach(s => s.genres.forEach(g => cont[g] = (cont[g] || 0) + 1));
   const generos = Object.keys(cont).sort((a, b) => cont[b] - cont[a]);
@@ -1195,7 +1195,6 @@ let pstate = null;
 function showEmbed(url, title, hash) {
   if (!pstate || pstate.url !== url) $('pframe').innerHTML = embed(url);
   pstate = { url, title, hash };
-  try { sessionStorage.setItem('playerEm', Date.now()); } catch {}   // para reconhecer a volta do anúncio
   $('ptitle').textContent = title;
   place();
 }
@@ -1215,33 +1214,6 @@ $('pExpand').onclick = () => { if (pstate) location.hash = pstate.hash; };
 $('pClose').onclick = stopEmbed;
 $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); else route(); };
 
-/* Depois do anúncio: ao dar play, o player abre uma janela de propaganda. No celular (principalmente no app
-   instalado) ela toma conta da tela e é preciso voltar. Ao voltar, o app destaca o botão "Recarregar player",
-   que reabre o player no lugar, sem fechar e reabrir o episódio. */
-const ROTULO_RECARREGAR = '↻ Recarregar player', ROTULO_VOLTOU = '↻ Voltou do anúncio? Recarregar player';
-const noCelular = () => matchMedia('(pointer: coarse)').matches;
-let dicaTimer;
-function dicaRecarregar() {
-  if (!pstate || location.hash !== pstate.hash) return;
-  const b = $('pReload');
-  b.classList.add('dica'); b.textContent = ROTULO_VOLTOU;
-  clearTimeout(dicaTimer);
-  dicaTimer = setTimeout(() => { b.classList.remove('dica'); b.textContent = ROTULO_RECARREGAR; }, 15000);
-}
-$('pReload').onclick = () => {
-  if (!pstate) return;
-  $('pframe').innerHTML = embed(pstate.url);
-  clearTimeout(dicaTimer); $('pReload').classList.remove('dica'); $('pReload').textContent = ROTULO_RECARREGAR;
-};
-let escondidoEm = 0;
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { escondidoEm = Date.now(); return; }
-  if (noCelular() && escondidoEm && Date.now() - escondidoEm > 1500) dicaRecarregar();   // voltou de outra tela/janela
-});
-// se o anúncio recarregou o app inteiro, o endereço do player continua na barra: o app reabre o episódio e avisa
-try {
-  if (noCelular() && Date.now() - (+sessionStorage.getItem('playerEm') || 0) < 180000 && /^#(ver|assistir|canal|evento)=/.test(location.hash)) setTimeout(dicaRecarregar, 2500);
-} catch {}
 
 /* ---------- agenda esportiva ----------
    A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue
