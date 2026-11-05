@@ -580,8 +580,9 @@ async function renderCatalogo(misto) {
   rows.push(row('Continuar assistindo', salvos('hist'), { sub: s => 'T' + s.s + ':E' + s.e, progress: s => pctAbertos(s.id, s.tot), proximo: true }));
   rows.push(row('Minha lista', misto ? salvos('favs') : salvos('favs').filter(x => !x.mt)));
   rows.push(row('Top 10 séries da semana', series.slice(0, 10), { top10: true }));
-  if (misto) rows.push(row('Top 10 filmes da semana', filmes.slice(0, 10), { top10: true }));
   rows.push(row('Em alta', misto ? list.slice(20, 60) : list.slice(10, 40)));
+  // no Início, o Top 10 de filmes vem depois de outras fileiras ("Em breve" entra logo após o Top 10 de séries)
+  if (misto) rows.push(row('Top 10 filmes da semana', filmes.slice(0, 10), { top10: true }));
   top.slice(0, 7).forEach(g => rows.push(row(gen(g), list.filter(s => s.genres.includes(g)).slice(0, 24))));
   rows.forEach(r => r && $('rows').appendChild(r));
 
@@ -591,8 +592,7 @@ async function renderCatalogo(misto) {
     if (tk !== homeTk) return;
     const r = row('Em breve', emBreveOrdenado(cal, 14).slice(0, 30), { tile: tileBreve, more: () => { page = 'breve'; query = ''; go(); } });
     if (!r) return;
-    const ancora = misto ? 'Top 10 filmes da semana' : 'Top 10 séries da semana';
-    const top = [...$('rows').children].find(el => (el.querySelector('h3') || {}).textContent === ancora);
+    const top = [...$('rows').children].find(el => (el.querySelector('h3') || {}).textContent === 'Top 10 séries da semana');
     if (top) top.after(r); else $('rows').prepend(r);
   }).catch(() => {});
   // entradas do histórico de antes das barras novas não têm o total de episódios: busca e completa
