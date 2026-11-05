@@ -216,35 +216,67 @@ function rotuloDia(iso) {
   const n = diasAte(iso), dt = dataLocal(iso);
   return n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : DIAS[dt.getDay()] + ', ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0');
 }
-// uma entrada por série e por dia (novelas têm dezenas de episódios no mesmo dia): fica o menor episódio e "+N"
+// Estreias de filmes (TMDB): as mais populares dos próximos ~60 dias (e, no calendário, dos dias anteriores), no mesmo
+// formato dos itens do calendário de séries (filme: true). As datas são as de estreia que a TMDB informa.
+const calFilmes = new Map();
+async function loadFilmesCal(passado = 4) {
+  if (calFilmes.has(passado)) return calFilmes.get(passado);
+  const vazia = () => ({ results: [] });
+  const hoje = hojeISO(), de = isoMais(-passado), ate = isoMais(60);
+  const disc = (gte, lte, extra, p) => api('/discover/movie?sort_by=popularity.desc&primary_release_date.gte=' + gte + '&primary_release_date.lte=' + lte + extra + '&page=' + p).catch(vazia);
+  const lotes = await Promise.all([
+    disc(hoje, ate, '', 1), disc(hoje, ate, '', 2),
+    api('/movie/upcoming?region=BR&page=1').catch(vazia), api('/movie/upcoming?region=BR&page=2').catch(vazia),
+    api('/movie/now_playing?region=BR&page=1').catch(vazia),
+    ...(passado > 4 ? [disc(de, isoMais(-1), '&vote_count.gte=30', 1), disc(de, isoMais(-1), '&vote_count.gte=30', 2)] : []),
+  ]);
+  const vistos = new Set();
+  const itens = lotes.flatMap(l => l.results || [])
+    .filter(m => m && m.poster_path && /^\d{4}-\d{2}-\d{2}$/.test(m.release_date || '') && m.release_date >= de && m.release_date <= ate && !vistos.has(m.id) && vistos.add(m.id))
+    .map(m => ({ id: m.id, t: String(m.title || m.original_title || '').slice(0, 120), ep: '', s: 0, n: 0, d: m.release_date, p: m.poster_path, filme: true, pop: m.popularity || 0 }));
+  calFilmes.set(passado, itens);
+  return itens;
+}
+// séries + filmes; se os filmes falharem ficam só as séries, e o erro só aparece se não houver nada
+async function loadNovidades(passado = 4) {
+  let erro = null;
+  const [sr, fi] = await Promise.all([loadCalendario(passado).catch(e => { erro = e; return []; }), loadFilmesCal(passado).catch(() => [])]);
+  if (erro && !fi.length) throw erro;
+  return [...sr, ...fi];
+}
+// uma entrada por série (ou filme) e por dia (novelas têm dezenas de episódios no mesmo dia): fica o menor episódio e "+N"
 function breves(itens, ateDias, comPassado) {
   const mapa = new Map();
   itens.filter(x => (comPassado || x.d >= hojeISO()) && (ateDias == null || diasAte(x.d) <= ateDias))
     .sort((a, b) => a.d.localeCompare(b.d) || a.s - b.s || a.n - b.n)
-    .forEach(x => { const k = x.id + '|' + x.d; if (mapa.has(k)) mapa.get(k).mais++; else mapa.set(k, { ...x, mais: 0 }); });
+    .forEach(x => { const k = (x.filme ? 'f' : 's') + x.id + '|' + x.d; if (mapa.has(k)) mapa.get(k).mais++; else mapa.set(k, { ...x, mais: 0 }); });
   return [...mapa.values()];
 }
 function tileBreve(x, semDia) {
-  const sub = 'T' + x.s + ':E' + x.n + (x.mais ? ' +' + x.mais : '') + (x.ep ? ' · ' + x.ep : '');
-  const t = tile({ id: x.id, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '' }, sub);
+  const sub = x.filme ? 'Filme' : 'T' + x.s + ':E' + x.n + (x.mais ? ' +' + x.mais : '') + (x.ep ? ' · ' + x.ep : '');
+  const t = tile({ id: x.id, mt: x.filme ? 1 : 0, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '' }, sub);
   if (!semDia) t.insertAdjacentHTML('beforeend', '<span class="when">' + esc(rotuloDia(x.d)) + '</span>');
   return t;
 }
 /* Relevância: o calendário do SuperFlix tem 400+ séries (novelas, animes, doramas...). As "relevantes" são as
    que também estão entre as mais populares/em alta da TMDB (a lista de populares da home); elas vêm primeiro. */
-const posicaoNoTop = () => { const m = new Map(); (populares || []).forEach((s, i) => m.set(s.id, i)); return m; };
-const umaPorSerie = lista => { const v = new Set(); return lista.filter(x => !v.has(x.id) && v.add(x.id)); };
+const chaveDe = x => (x.filme ? 'f' : 's') + x.id;   // os IDs da TMDB se repetem entre séries e filmes
+const posicaoNoTop = () => { const m = new Map(); (populares || []).forEach((s, i) => m.set('s' + s.id, i)); (filmesPop || []).forEach((s, i) => m.set('f' + s.id, i)); return m; };
+// posição na lista de populares (menor = mais relevante); filmes muito populares também contam como relevantes
+const rankDe = (pos, x) => pos.has(chaveDe(x)) ? pos.get(chaveDe(x)) : (x.filme && x.pop >= 60 ? 100 : 9999);
+const umaPorSerie = lista => { const v = new Set(); return lista.filter(x => !v.has(chaveDe(x)) && v.add(chaveDe(x))); };
 function relevantes(cal, ateDias) {
   const pos = posicaoNoTop();
-  return umaPorSerie(breves(cal, ateDias).filter(x => pos.has(x.id))).sort((a, b) => a.d.localeCompare(b.d) || pos.get(a.id) - pos.get(b.id));
+  return umaPorSerie(breves(cal, ateDias).filter(x => rankDe(pos, x) < 9999)).sort((a, b) => a.d.localeCompare(b.d) || rankDe(pos, a) - rankDe(pos, b));
 }
 function emBreveOrdenado(cal, ateDias) {
-  const rel = relevantes(cal, ateDias), ids = new Set(rel.map(x => x.id));
-  return [...rel, ...umaPorSerie(breves(cal, ateDias).filter(x => !ids.has(x.id)))];
+  const rel = relevantes(cal, ateDias), ids = new Set(rel.map(chaveDe));
+  return [...rel, ...umaPorSerie(breves(cal, ateDias).filter(x => !ids.has(chaveDe(x))))];
 }
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 function rotuloLancamento(x) {
   const n = diasAte(x.d), dt = dataLocal(x.d);
+  if (x.filme) return 'Filme · estreia' + (n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()]);
   const tipo = x.n === 1 ? (x.s === 1 ? 'Estreia' : 'Nova temporada') : 'Novo episódio';
   const quando = n === 0 ? ' hoje' : n === 1 ? ' amanhã' : ' em ' + dt.getDate() + ' de ' + MESES[dt.getMonth()];
   return tipo + quando + (x.n === 1 ? '' : ' · T' + x.s + ':E' + x.n);
@@ -265,12 +297,12 @@ function cardNv(c) {
     if (u) { img.innerHTML = '<img loading="lazy" src="' + esc(u) + '" alt="">'; }
     fav();
   };
-  const fav = () => { el.querySelector('.nv-fav').textContent = inList(el._s.id) ? '✓ Na minha lista' : '＋ Minha lista'; };
+  const fav = () => { el.querySelector('.nv-fav').textContent = inList(el._s.id, el._s.mt) ? '✓ Na minha lista' : '＋ Minha lista'; };
   el.querySelector('.nv-rot').textContent = c.rotulo;
   el.querySelector('.nv-a').textContent = c.acao;
   el.querySelector('.nv-a').onclick = () => c.vai(el._s);
   el.querySelector('.nv-fav').onclick = () => { toggleFav(el._s); fav(); };
-  img.onclick = el.querySelector('h2').onclick = () => open(el._s.id);
+  img.onclick = el.querySelector('h2').onclick = () => abrir(el._s);
   poe(c.serie);
   el._poe = poe;
   return el;
@@ -295,14 +327,16 @@ async function conteudoBreve() {
   const tab = brTab, box = $('grid');
   if (nvObs) nvObs.disconnect();
   box.className = tab === 'cal' ? 'grid cal' : 'grid feed'; box.innerHTML = ''; $('msg').textContent = 'Carregando...';
-  let pop = [], cal = [];
-  try { [pop, cal] = await Promise.all([loadPopulares().catch(() => []), tab === 'alta' ? [] : loadCalendario(tab === 'cal' ? 45 : 4)]); }
+  let pop = [], fil = [], cal = [];
+  try { [pop, fil, cal] = await Promise.all([loadPopulares().catch(() => []), loadFilmes().catch(() => []), tab === 'alta' ? [] : loadNovidades(tab === 'cal' ? 45 : 4)]); }
   catch (e) { if (tab === brTab) $('msg').textContent = e.message; return; }
   if (tab !== brTab) return;   // trocou de aba enquanto carregava
   $('msg').textContent = '';
 
-  if (tab === 'alta') {
-    pop.slice(0, 20).forEach((s, i) => box.appendChild(cardNv({ serie: s, rotulo: 'Em alta esta semana · nº ' + (i + 1), acao: '▶ Assistir', vai: x => { location.hash = '#ver=' + x.id; } })));
+  if (tab === 'alta') {   // séries e filmes em alta, intercalados; o número é a posição em cada lista
+    mistura(pop.slice(0, 12), fil.slice(0, 12)).forEach(s => box.appendChild(cardNv({
+      serie: s, rotulo: (s.mt ? 'Filme' : 'Série') + ' em alta esta semana · nº ' + ((s.mt ? fil : pop).indexOf(s) + 1), acao: '▶ Assistir',
+      vai: x => { location.hash = (x.mt ? '#assistir=' : '#ver=') + x.id; } })));
     return;
   }
   if (tab === 'breve') {
@@ -313,14 +347,14 @@ async function conteudoBreve() {
     nvObs = new IntersectionObserver(es => es.forEach(e => {
       if (!e.isIntersecting) return;
       nvObs.unobserve(e.target);
-      loadLeve(e.target._id).then(s => { if (s && e.target.isConnected) e.target._poe(s); });
+      loadLeve(e.target._id, e.target._filme).then(s => { if (s && e.target.isConnected) e.target._poe(s); });
     }), { rootMargin: '500px' });
     lista.slice(0, 40).forEach((x, i) => {
-      const mini = { tm: 1, id: x.id, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '', summary: '' };
-      const el = cardNv({ serie: mini, rotulo: rotuloLancamento(x), acao: 'Detalhes', vai: s => open(s.id) });
-      el._id = x.id;
+      const mini = { tm: 1, mt: x.filme ? 1 : 0, id: x.id, name: x.t, poster: x.p ? IMG + 'w342' + x.p : null, genres: [], year: '', summary: '' };
+      const el = cardNv({ serie: mini, rotulo: rotuloLancamento(x), acao: 'Detalhes', vai: s => abrir(s) });
+      el._id = x.id; el._filme = !!x.filme;
       box.appendChild(el);
-      if (i < 8) loadLeve(x.id).then(s => { if (s && el.isConnected) el._poe(s); });   // a primeira tela já vem completa
+      if (i < 8) loadLeve(x.id, x.filme).then(s => { if (s && el.isConnected) el._poe(s); });   // a primeira tela já vem completa
       else nvObs.observe(el);
     });
     if (!lista.length) $('msg').textContent = 'Nada marcado para os próximos dias.';
@@ -329,27 +363,33 @@ async function conteudoBreve() {
   viewCalendario(box, cal);
 }
 
-// Calendário de verdade: grade do mês com as capas das séries de cada dia; ao tocar num dia, a lista dele aparece embaixo.
-// Dentro de cada dia as séries relevantes vêm primeiro.
+// Calendário de verdade: grade do mês com as capas das séries e filmes de cada dia; ao tocar num dia, a lista dele
+// aparece embaixo. Dentro de cada dia as mais relevantes vêm primeiro. O filtro Tudo / Séries / Filmes é só visual.
+let calTipo = 'tudo';
 function viewCalendario(box, cal) {
   const pos = posicaoNoTop();
-  const dias = new Map();
-  breves(cal, null, true).forEach(x => { if (!dias.has(x.d)) dias.set(x.d, []); dias.get(x.d).push(x); });
-  dias.forEach(l => l.sort((a, b) => (pos.has(a.id) ? pos.get(a.id) : 9999) - (pos.has(b.id) ? pos.get(b.id) : 9999) || a.t.localeCompare(b.t)));
-  if (!dias.size) { $('msg').textContent = 'Nada marcado para os próximos dias.'; return; }
-  const meses = [...new Set([hojeISO().slice(0, 7), ...[...dias.keys()].map(d => d.slice(0, 7))])].sort();
-  let sel = dias.has(hojeISO()) ? hojeISO() : [...dias.keys()].sort()[0];
+  if (!cal.length) { $('msg').textContent = 'Nada marcado para os próximos dias.'; return; }
+  let dias = new Map();
+  const calcula = () => {
+    dias = new Map();
+    breves(cal.filter(x => calTipo === 'tudo' || (calTipo === 'filmes') === !!x.filme), null, true).forEach(x => { if (!dias.has(x.d)) dias.set(x.d, []); dias.get(x.d).push(x); });
+    dias.forEach(l => l.sort((a, b) => rankDe(pos, a) - rankDe(pos, b) || a.t.localeCompare(b.t)));
+  };
+  calcula();
+  const meses = [...new Set([hojeISO().slice(0, 7), ...cal.map(x => x.d.slice(0, 7))])].sort();
+  let sel = dias.has(hojeISO()) ? hojeISO() : [...dias.keys()].sort()[0] || hojeISO();
   let mes = sel.slice(0, 7);
 
   box.className = 'grid cal';
-  box.innerHTML = '<div class="calnav"><button class="prev" aria-label="Mês anterior">‹</button><b></b><button class="next" aria-label="Próximo mês">›</button></div>'
+  box.innerHTML = '<div class="chips2 calfiltro"></div>'
+    + '<div class="calnav"><button class="prev" aria-label="Mês anterior">‹</button><b></b><button class="next" aria-label="Próximo mês">›</button></div>'
     + '<div class="calgrid"></div><h3 class="dia"></h3><div class="grid calres"></div>';
-  const grade = box.querySelector('.calgrid'), titulo = box.querySelector('h3.dia'), res = box.querySelector('.calres');
+  const grade = box.querySelector('.calgrid'), titulo = box.querySelector('h3.dia'), res = box.querySelector('.calres'), filtro = box.querySelector('.calfiltro');
 
-  const lista = rolar => {   // séries do dia selecionado
+  const lista = rolar => {   // lançamentos do dia selecionado
     const l = dias.get(sel) || [];
     const dt = dataLocal(sel);
-    titulo.textContent = rotuloDia(sel) + (![0, 1].includes(diasAte(sel)) ? '' : ' · ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')) + (l.length ? ' · ' + l.length + (l.length === 1 ? ' série' : ' séries') : '');
+    titulo.textContent = rotuloDia(sel) + (![0, 1].includes(diasAte(sel)) ? '' : ' · ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')) + (l.length ? ' · ' + l.length + (l.length === 1 ? ' lançamento' : ' lançamentos') : '');
     res.innerHTML = '';
     l.forEach(x => res.appendChild(tileBreve(x, true)));
     if (!l.length) res.innerHTML = '<p class="agmeta">Nada marcado para este dia.</p>';
@@ -377,6 +417,13 @@ function viewCalendario(box, cal) {
       grade.appendChild(b);
     }
   };
+  [['tudo', 'Tudo'], ['series', 'Séries'], ['filmes', 'Filmes']].forEach(([k, t]) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    if (k === calTipo) b.className = 'on';
+    b.onclick = () => { calTipo = k; [...filtro.children].forEach(x => x.classList.toggle('on', x === b)); calcula(); desenha(); lista(false); };
+    filtro.appendChild(b);
+  });
   grade.onclick = e => {
     const b = e.target.closest('.cd'); if (!b) return;
     sel = b.dataset.d;
@@ -389,9 +436,10 @@ function viewCalendario(box, cal) {
 }
 // detalhes leves de uma série (imagem de fundo, nome e sinopse em português), com cache
 const leves = new Map();
-function loadLeve(id) {
-  if (!leves.has(id)) leves.set(id, api('/tv/' + id).then(slim).catch(() => null));
-  return leves.get(id);
+function loadLeve(id, filme) {
+  const k = (filme ? 'f' : 's') + id;
+  if (!leves.has(k)) leves.set(k, api((filme ? '/movie/' : '/tv/') + id).then(filme ? slimFilme : slim).catch(() => null));
+  return leves.get(k);
 }
 
 // temporadas (com episódios) de uma série; até 20 por chamada
@@ -588,7 +636,7 @@ async function renderCatalogo(misto) {
 
   // "Em breve" vem do Worker e chega depois; entra logo depois do Top 10
   const tk = ++homeTk;
-  loadCalendario().then(cal => {
+  (misto ? loadNovidades() : loadCalendario()).then(cal => {   // no Início entram também as estreias de filmes
     if (tk !== homeTk) return;
     const r = row('Em breve', emBreveOrdenado(cal, 14).slice(0, 30), { tile: tileBreve, more: () => { page = 'breve'; query = ''; go(); } });
     if (!r) return;
