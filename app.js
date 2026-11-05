@@ -114,7 +114,7 @@ async function ptMany(items, apply) {
 let page = 'home', query = '', gsel = '', rendered = '', under = 'home', pending = null, cur = null;
 let populares = null, hojeCache = null, heroShow = null;
 const showCache = new Map();
-const TITULOS = { home: 'Início', hoje: 'No ar hoje', breve: 'Em breve', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
+const TITULOS = { home: 'Início', filmes: 'Filmes', hoje: 'No ar hoje', breve: 'Em breve', vivo: 'Ao vivo', lista: 'Minha lista', busca: 'Buscar' };
 let homeTk = 0;   // descarta o "Em breve" que chegar depois de a home ser refeita
 
 const SECTIONS = ['home', 'list', 'view', 'vivo'];
@@ -140,9 +140,9 @@ $('q2').oninput = onType($('q2'));
 const pageKey = () => page === 'busca' ? 'busca:' + query : query ? 'q:' + query : page === 'genero' ? 'g:' + gsel : page;
 async function ensurePage() {
   const k = pageKey();
-  under = (!query && page === 'home') ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
+  under = (!query && (page === 'home' || page === 'filmes')) ? 'home' : (!query && page === 'vivo') ? 'vivo' : 'list';
   syncUI();
-  if (rendered !== k) { rendered = k; await (under === 'home' ? renderHome() : under === 'vivo' ? renderVivo() : (page === 'breve' && !query) ? renderBreve() : renderGrid()); }
+  if (rendered !== k) { rendered = k; await (under === 'home' ? (page === 'filmes' ? renderFilmes() : renderHome()) : under === 'vivo' ? renderVivo() : (page === 'breve' && !query) ? renderBreve() : renderGrid()); }
   else only(under);
 }
 async function rotear() {
@@ -151,9 +151,11 @@ async function rotear() {
   const ev = location.hash.match(/^#evento=([A-Za-z0-9_-]{1,120})$/);
   if (cn) { closeModal(); return openCanal(cn[1]); }
   if (ev) { closeModal(); return openEvento(ev[1]); }
+  const fm = location.hash.match(/^#(filme|assistir)=(\d+)$/);
   if (m && m[1] === 'ver') { closeModal(); return openPlayer(+m[2]); }
+  if (fm && fm[1] === 'assistir') { closeModal(); return openFilmePlayer(+fm[2]); }
   await ensurePage();
-  if (m) openModal(+m[2]); else closeModal();
+  if (fm) openFilme(+fm[2]); else if (m) openModal(+m[2]); else closeModal();
 }
 async function route() { await rotear(); place(); requestAnimationFrame(place); setTimeout(place, 400); }
 window.addEventListener('hashchange', route);
@@ -478,21 +480,22 @@ const startPos = d => {
 
 /* ---------- componentes ---------- */
 const open = id => { location.hash = '#serie=' + id; };
+const abrir = s => { location.hash = (s.mt ? '#filme=' : '#serie=') + s.id; };   // série ou filme (os IDs da TMDB se repetem entre os dois)
 
 function tile(s, sub, port) {
   const d = document.createElement('div');
   d.className = 'tile' + (port ? ' port' : '');
   d.innerHTML = (s.poster ? '<img loading="lazy" src="' + esc(s.poster) + '" alt="">' : '<div class="noimg">' + esc(s.name) + '</div>')
-    + '<div class="cap">' + esc(s.name) + '<small>' + esc(sub || [s.year, s.genres[0] && gen(s.genres[0])].filter(Boolean).join(' · ')) + '</small></div>';
-  d.onclick = () => open(s.id);
+    + '<div class="cap">' + esc(s.name) + '<small>' + esc(sub || [s.mt && 'Filme', s.year, s.genres[0] && gen(s.genres[0])].filter(Boolean).join(' · ')) + '</small></div>';
+  d.onclick = () => abrir(s);
   return d;
 }
 
 function itemLista(s) {
   const d = document.createElement('div');
   d.className = 'li';
-  d.innerHTML = '<div class="th">' + (s.poster ? '<img loading="lazy" src="' + esc(s.poster) + '" alt="">' : '') + '</div><b>' + esc(s.name) + '</b><span class="go">▶</span>';
-  d.onclick = () => open(s.id);
+  d.innerHTML = '<div class="th">' + (s.poster ? '<img loading="lazy" src="' + esc(s.poster) + '" alt="">' : '') + '</div><b>' + esc(s.name) + (s.mt ? ' <small class="dim">Filme</small>' : '') + '</b><span class="go">▶</span>';
+  d.onclick = () => abrir(s);
   return d;
 }
 
@@ -528,10 +531,10 @@ function row(title, list, opt = {}) {
 }
 
 const dots = parts => parts.filter(Boolean).map(p => '<span>' + esc(p) + '</span>').join('');
-const inList = id => salvos('favs').some(x => x.id === id);
+const inList = (id, filme) => salvos('favs').some(x => x.id === id && !!x.mt === !!filme);
 function toggleFav(s) {
-  const f = salvos('favs');
-  set('favs', f.some(x => x.id === s.id) ? f.filter(x => x.id !== s.id) : [s, ...f]);
+  const f = salvos('favs'), igual = x => x.id === s.id && !!x.mt === !!s.mt;
+  set('favs', f.some(igual) ? f.filter(x => !igual(x)) : [s, ...f]);
   rendered = '';
 }
 
@@ -552,6 +555,10 @@ async function renderHome() {
   nov.textContent = 'Novidades';
   nov.onclick = () => { page = 'breve'; gsel = ''; query = ''; go(); };
   $('chips').appendChild(nov);
+  const fil = document.createElement('button');
+  fil.textContent = 'Filmes';
+  fil.onclick = () => { page = 'filmes'; gsel = ''; query = ''; go(); };
+  $('chips').appendChild(fil);
   top.slice(0, 12).forEach(g => {
     const b = document.createElement('button');
     b.textContent = gen(g);
@@ -587,7 +594,7 @@ async function renderHome() {
 }
 
 function metaHero(s, temporadas) {
-  return dots(['Série', s.genres[0] && gen(s.genres[0]), s.year, temporadas && temporadas + (temporadas > 1 ? ' temporadas' : ' temporada')])
+  return dots([s.mt ? 'Filme' : 'Série', s.genres[0] && gen(s.genres[0]), s.year, temporadas && temporadas + (temporadas > 1 ? ' temporadas' : ' temporada')])
     + (s.rating ? '<span class="badge star">★ ' + esc(s.rating) + '</span>' : '');
 }
 async function renderHero(list) {
@@ -603,18 +610,155 @@ async function renderHero(list) {
   $('heroMeta').innerHTML = metaHero(s, 0);
   $('heroSin').textContent = s.summary;
   const b = $('heroBadge');
-  b.textContent = idx < 10 ? 'Nº ' + (idx + 1) + ' da semana' : (s.rating ? 'Nota ' + s.rating : '');
+  b.textContent = idx < 10 ? 'Nº ' + (idx + 1) + (s.mt ? ' em filmes da semana' : ' da semana') : (s.rating ? 'Nota ' + s.rating : '');
   b.hidden = !b.textContent;
-  $('heroFav').textContent = inList(s.id) ? '✓ Na minha lista' : '＋ Minha lista';
+  $('heroFav').textContent = inList(s.id, s.mt) ? '✓ Na minha lista' : '＋ Minha lista';
+  document.querySelector('#heroPlay .t-mob').textContent = s.mt ? 'Assistir ao filme' : 'Assistir à série';
   hero.hidden = false;
+  if (s.mt) return;
   // o nº de temporadas só vem nos detalhes
   const det = await api('/tv/' + s.id).catch(() => null);
   if (heroShow !== s) return;
   if (det && det.number_of_seasons) $('heroMeta').innerHTML = metaHero(s, det.number_of_seasons);
 }
-$('heroInfo').onclick = () => heroShow && open(heroShow.id);
-$('heroPlay').onclick = () => heroShow && (location.hash = '#ver=' + heroShow.id);
-$('heroFav').onclick = () => { if (!heroShow) return; toggleFav(heroShow); $('heroFav').textContent = inList(heroShow.id) ? '✓ Na minha lista' : '＋ Minha lista'; };
+$('heroInfo').onclick = () => heroShow && abrir(heroShow);
+$('heroPlay').onclick = () => heroShow && (location.hash = (heroShow.mt ? '#assistir=' : '#ver=') + heroShow.id);
+$('heroFav').onclick = () => { if (!heroShow) return; toggleFav(heroShow); $('heroFav').textContent = inList(heroShow.id, heroShow.mt) ? '✓ Na minha lista' : '＋ Minha lista'; };
+
+/* ---------- filmes ----------
+   Catálogo da TMDB (como as séries) e player do SuperFlix pelo mesmo ID: /filme/ID. A TMDB diz o que existe;
+   se o SuperFlix já tem (ou tem boa cópia de) um lançamento recente, só dá para saber ao abrir o player. */
+const FILME = 'https://superflixapi.fun/filme/';
+const GEN_FILME = { 28: 'Ação', 12: 'Aventura', 16: 'Animação', 35: 'Comédia', 80: 'Crime', 99: 'Documentário', 18: 'Drama', 10751: 'Família', 14: 'Fantasia', 36: 'História', 27: 'Terror', 10402: 'Música', 9648: 'Mistério', 10749: 'Romance', 878: 'Ficção científica', 10770: 'Cinema TV', 53: 'Suspense', 10752: 'Guerra', 37: 'Faroeste' };
+Object.assign(STATUS, { Released: 'Lançado', 'Post Production': 'Em pós-produção', Rumored: 'Em rumores' });
+const slimFilme = m => ({
+  tm: 1, mt: 1, id: m.id, name: m.title || m.original_title || '',
+  poster: m.poster_path ? IMG + 'w342' + m.poster_path : null,
+  big: m.poster_path ? IMG + 'w780' + m.poster_path : null,
+  back: m.backdrop_path ? IMG + 'w1280' + m.backdrop_path : null,
+  year: (m.release_date || '').slice(0, 4), data: m.release_date || '',
+  genres: (m.genre_ids || (m.genres || []).map(g => g.id)).map(i => GEN_FILME[i]).filter(Boolean),
+  weight: m.popularity || 0,
+  rating: m.vote_count >= 20 && m.vote_average ? m.vote_average.toFixed(1) : null,
+  status: m.status, summary: (m.overview || '').slice(0, 240)
+});
+function unicasFilmes(lotes) {
+  const vistos = new Set();
+  return lotes.flatMap(l => l.results || []).map(slimFilme).filter(s => s.poster && playable(s) && !vistos.has(s.id) && vistos.add(s.id));
+}
+const isoMais = dias => { const d = new Date(Date.now() + dias * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const tempoTxt = min => !min ? '' : min < 60 ? min + ' min' : (Math.floor(min / 60) + ' h ' + (min % 60 ? (min % 60) + ' min' : '')).trim();
+let filmesPop = null, filmesListas = null;
+async function loadFilmes() {
+  if (filmesPop) return filmesPop;
+  const lotes = await Promise.all([...[1, 2].map(p => api('/trending/movie/week?page=' + p)), ...[1, 2, 3].map(p => api('/movie/popular?page=' + p))]);
+  filmesPop = unicasFilmes(lotes).slice(0, 120);
+  return filmesPop;
+}
+// em cartaz, lançamentos dos últimos ~3 meses e estreias que vêm aí (cada lista que falhar fica vazia)
+async function loadFilmesListas() {
+  if (filmesListas) return filmesListas;
+  const vazia = () => ({ results: [] });
+  const [cartaz, recentes, breve] = await Promise.all([
+    api('/movie/now_playing?region=BR&page=1').catch(vazia),
+    api('/discover/movie?sort_by=popularity.desc&vote_count.gte=20&primary_release_date.gte=' + isoMais(-100) + '&primary_release_date.lte=' + hojeISO() + '&page=1').catch(vazia),
+    api('/movie/upcoming?region=BR&page=1').catch(vazia),
+  ]);
+  filmesListas = { cartaz: unicasFilmes([cartaz]), recentes: unicasFilmes([recentes]), breve: unicasFilmes([breve]) };
+  return filmesListas;
+}
+const filmeCache = new Map();
+async function loadFilme(id) {
+  if (filmeCache.has(id)) return filmeCache.get(id);
+  const m = await api('/movie/' + id + '?append_to_response=credits');
+  let sin = { text: m.overview || '', tr: false };
+  if (!sin.text) {   // sem sinopse em português: pega a em inglês e traduz
+    const en = await api('/movie/' + id + '?language=en-US').catch(() => null);
+    if (en && en.overview) sin = { text: en.overview, tr: true };
+  }
+  const d = { s: slimFilme(m), show: { summary: sin.text, tr: sin.tr }, tempo: m.runtime || 0, tagline: m.tagline || '',
+    cast: ((m.credits && m.credits.cast) || []).slice(0, 10).map(c => c.name) };
+  filmeCache.set(id, d);
+  return d;
+}
+function tileFilmeBreve(s) {
+  const dt = dataLocal(s.data);
+  const t = tile(s, 'Estreia ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0'));
+  t.insertAdjacentHTML('beforeend', '<span class="when">' + esc(rotuloDia(s.data)) + '</span>');
+  return t;
+}
+async function renderFilmes() {
+  only('home'); window.scrollTo(0, 0);
+  $('rows').innerHTML = ''; $('chips').innerHTML = ''; $('hero').hidden = true; $('msg').textContent = 'Carregando...';
+  let list, listas;
+  try { [list, listas] = await Promise.all([loadFilmes(), loadFilmesListas()]); } catch (e) { $('msg').textContent = e.message; return; }
+  $('msg').textContent = '';
+  // botões do topo (celular): voltar para as séries e as novidades
+  [['Séries', 'home'], ['Novidades', 'breve']].forEach(([t, p]) => {
+    const b = document.createElement('button');
+    b.textContent = t;
+    b.onclick = () => { page = p; query = ''; go(); };
+    $('chips').appendChild(b);
+  });
+  const cont = {};
+  list.forEach(s => s.genres.forEach(g => cont[g] = (cont[g] || 0) + 1));
+  const generos = Object.keys(cont).sort((a, b) => cont[b] - cont[a]);
+  renderHero(list);
+  const proximas = listas.breve.filter(s => s.data >= hojeISO()).sort((a, b) => a.data.localeCompare(b.data));
+  [
+    row('Vistos recentemente', get('histf', []).filter(x => x && x.tm && x.mt)),
+    row('Minha lista', salvos('favs').filter(x => x.mt)),
+    row('Top 10 filmes da semana', list.slice(0, 10), { top10: true }),
+    row('Em cartaz nos cinemas', listas.cartaz.slice(0, 30)),
+    row('Lançamentos recentes', listas.recentes.slice(0, 30)),
+    row('Em breve nos cinemas', proximas.slice(0, 30), { tile: tileFilmeBreve }),
+    row('Em alta', list.slice(10, 40)),
+    ...generos.slice(0, 7).map(g => row(g, list.filter(s => s.genres.includes(g)).slice(0, 24))),
+  ].forEach(r => r && $('rows').appendChild(r));
+}
+
+// detalhes do filme: reaproveita o modal das séries, sem temporadas nem episódios
+async function openFilme(id) {
+  modal.hidden = false; document.body.classList.add('lock', 'on-modal'); modal.scrollTop = 0;
+  $('mTitle').textContent = 'Carregando...';
+  ['mMeta', 'mMetaMob', 'mCur', 'mSin', 'mRight', 'mEps', 'mProg'].forEach(k => $(k).innerHTML = '');
+  $('mProg').hidden = true; $('mNext').hidden = true; $('mBg').style.backgroundImage = ''; $('mSeason').innerHTML = '';
+  document.querySelector('.m-eps').hidden = true;
+  let d;
+  try { d = await loadFilme(id); } catch (e) { $('mTitle').textContent = e.message; return; }
+  if (modal.hidden || location.hash !== '#filme=' + id) return;
+  const s = d.s;
+  mc = { d, filme: true };
+  $('mTitle').textContent = s.name;
+  const bg = s.back || s.big;
+  $('mBg').style.backgroundImage = bg ? 'url("' + bg + '")' : '';
+  $('mPlayTxt').textContent = 'Assistir';
+  const meta = (s.year ? '<span class="dim">' + esc(s.year) + '</span>' : '') + '<span class="badge">HD</span>'
+    + (d.tempo ? '<span class="dim">' + esc(tempoTxt(d.tempo)) + '</span>' : '')
+    + (s.rating ? '<span class="badge star">★ ' + esc(s.rating) + '</span>' : '');
+  $('mMeta').innerHTML = meta; $('mMetaMob').innerHTML = meta;
+  $('mRight').innerHTML =
+    (d.cast.length ? '<p><span class="k">Elenco:</span> ' + esc(d.cast.slice(0, 3).join(', ')) + (d.cast.length > 3 ? ', <i>mais</i>' : '') + '</p>' : '')
+    + (s.genres.length ? '<p><span class="k">Gêneros:</span> ' + esc(s.genres.join(', ')) + '</p>' : '')
+    + (s.status ? '<p><span class="k">Situação:</span> ' + esc(STATUS[s.status] || s.status) + '</p>' : '');
+  $('mSin').textContent = d.show.summary;
+  if (d.show.tr) pt(d.show.summary).then(t => { if (mc && mc.d === d) $('mSin').textContent = t; });
+  if (d.tagline) $('mCur').textContent = d.tagline;
+  renderFavBtn();
+}
+// player do filme: usa a tela do player no modo "canal" (sem episódios)
+async function openFilmePlayer(id) {
+  only('view'); $('view').classList.add('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
+  $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('epName').textContent = '';
+  let d;
+  try { d = await loadFilme(id); } catch (e) { $('vTitle').textContent = e.message; return; }
+  $('vTitle').textContent = d.s.name;
+  $('epName').textContent = [d.s.year, tempoTxt(d.tempo)].filter(Boolean).join(' · ');
+  showEmbed(FILME + (+id), d.s.name, '#assistir=' + id);   // o iframe só recebe um inteiro (id da TMDB)
+  const h = get('histf', []).filter(x => x && x.id !== d.s.id);
+  h.unshift(d.s); set('histf', h.slice(0, 30));
+  rendered = '';
+}
 
 /* ---------- grade / lista (busca, no ar hoje, minha lista, gênero) ---------- */
 async function renderGrid() {
@@ -628,7 +772,11 @@ async function renderGrid() {
   if (lista && document.activeElement !== $('q2')) setTimeout(() => $('q2').focus(), 60);
   let list = [];
   try {
-    if (query) list = ((await api('/search/tv?query=' + encodeURIComponent(query.slice(0, 100)))).results || []).map(slim).filter(s => s.poster && playable(s));
+    if (query) {   // séries e filmes juntos, do mais popular para o menos
+      const q = encodeURIComponent(query.slice(0, 100));
+      const [tv, fi] = await Promise.all([api('/search/tv?query=' + q), api('/search/movie?query=' + q).catch(() => ({ results: [] }))]);
+      list = [...(tv.results || []).map(slim), ...(fi.results || []).map(slimFilme)].filter(s => s.poster && playable(s)).sort((a, b) => b.weight - a.weight);
+    }
     else if (lista) list = (await loadPopulares()).slice(0, 30);
     else if (page === 'hoje') list = await loadHoje();
     else if (page === 'genero') list = (await loadPopulares()).filter(s => s.genres.includes(gsel));
@@ -691,6 +839,7 @@ async function openModal(id) {
   $('mTitle').textContent = 'Carregando...';
   ['mMeta', 'mMetaMob', 'mCur', 'mSin', 'mRight', 'mEps', 'mProg'].forEach(k => $(k).innerHTML = '');
   $('mProg').hidden = true; $('mNext').hidden = true; $('mBg').style.backgroundImage = ''; $('mSeason').innerHTML = '';
+  document.querySelector('.m-eps').hidden = false;
   let d;
   try { d = await loadShow(id); } catch (e) { $('mTitle').textContent = e.message; return; }
   if (modal.hidden || location.hash !== '#serie=' + id) return;
@@ -736,11 +885,11 @@ $('mSeason').onchange = () => {
   const id = mc.d.s.id;
   renderEps($('mEps'), mc.d, mc.s, -1, e => goPlay(id, mc.s, e));
 };
-$('mPlay').onclick = () => { if (mc) goPlay(mc.d.s.id, mc.s, mc.e); };
+$('mPlay').onclick = () => { if (!mc) return; if (mc.filme) location.hash = '#assistir=' + mc.d.s.id; else goPlay(mc.d.s.id, mc.s, mc.e); };
 $('mNext').onclick = () => { if (mc && mc.next) goPlay(mc.d.s.id, mc.next.s, mc.next.e); };
 function renderFavBtn() {
   if (!mc) return;
-  const on = inList(mc.d.s.id);
+  const on = inList(mc.d.s.id, mc.d.s.mt);
   $('mFav').textContent = on ? '✓' : '＋';
   $('mFav2').innerHTML = (on ? CHECK : PLUS) + '<span>Minha lista</span>';
 }
@@ -749,7 +898,7 @@ $('mFav').onclick = favClick;
 $('mFav2').onclick = favClick;
 $('mShare').onclick = async () => {
   if (!mc) return;
-  const url = location.href.split('#')[0] + '#serie=' + mc.d.s.id;
+  const url = location.href.split('#')[0] + (mc.filme ? '#filme=' : '#serie=') + mc.d.s.id;
   try {
     if (navigator.share) await navigator.share({ title: mc.d.s.name, url });
     else { await navigator.clipboard.writeText(url); alert('Link copiado!'); }

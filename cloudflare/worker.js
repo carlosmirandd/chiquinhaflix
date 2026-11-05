@@ -33,6 +33,9 @@ const TMDB_CAMINHOS = [
   /^trending\/tv\/(day|week)$/, /^tv\/(popular|top_rated|airing_today|on_the_air)$/,
   /^discover\/tv$/, /^search\/tv$/, /^tv\/\d{1,9}$/, /^tv\/\d{1,9}\/season\/\d{1,3}$/,
   /^find\/tt\d{1,12}$/, /^genre\/tv\/list$/,
+  // filmes
+  /^trending\/movie\/(day|week)$/, /^movie\/(popular|top_rated|now_playing|upcoming)$/,
+  /^discover\/movie$/, /^search\/movie$/, /^movie\/\d{1,9}$/, /^genre\/movie\/list$/,
 ];
 // parâmetros liberados e o formato aceito de cada um
 const TMDB_PARAMS = {
@@ -40,6 +43,8 @@ const TMDB_PARAMS = {
   with_genres: /^[\d,|]{1,40}$/, sort_by: /^[a-z_.]{1,40}$/, timezone: /^[A-Za-z_]+\/[A-Za-z_]+$/,
   external_source: /^imdb_id$/, include_image_language: /^[a-z,]{1,20}$/,
   'vote_count.gte': /^\d{1,6}$/, with_original_language: /^[a-z]{2}$/,
+  region: /^[A-Z]{2}$/, with_release_type: /^[\d|,]{1,10}$/,
+  'primary_release_date.gte': /^\d{4}-\d{2}-\d{2}$/, 'primary_release_date.lte': /^\d{4}-\d{2}-\d{2}$/,
 };
 const TMDB_APPEND = /^(external_ids|credits|images|videos|season\/\d{1,3})$/;
 
