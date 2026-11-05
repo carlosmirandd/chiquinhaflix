@@ -30,6 +30,8 @@ Esta versão é um **site de verdade**: HTML, CSS e JavaScript puros, sem build 
 - **Ao vivo**: canais, com o programa que está no ar, e agenda esportiva. Os canais adultos ficam atrás de um filtro **18+** com confirmação.
 - **Minha lista** e **histórico**, guardados no `localStorage`: nada sai do seu navegador.
 - **Miniplayer** flutuante, para continuar assistindo enquanto navega.
+- **Busca** com filtro de séries e filmes.
+- **Bloqueio de popups** do player (o `iframe` roda isolado, sem poder abrir janelas); dá para desligar num botão do player, caso algum vídeo não toque assim.
 - **Layout de app no celular**, instalável como **PWA**, e **modo TV** para controle remoto (liga sozinho em TVs; nas outras, use `?tv=1`).
 - Tudo em português do Brasil.
 

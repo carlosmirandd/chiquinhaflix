@@ -279,7 +279,7 @@ function cardNv(c) {
 let brTab = get('breveTab', 'breve'), nvObs = null;
 async function renderBreve() {
   only('list'); window.scrollTo(0, 0);
-  $('sbar').hidden = true; $('listTitle').textContent = 'Novidades';
+  $('sbar').hidden = true; $('qfiltro').hidden = true; $('listTitle').textContent = 'Novidades';
   const tabs = $('brTabs');
   tabs.hidden = false; tabs.innerHTML = '';
   [['breve', '🍿 Em breve'], ['alta', '🔥 Todo mundo está assistindo'], ['cal', '📅 Calendário']].forEach(([k, t]) => {
@@ -760,7 +760,7 @@ async function openFilme(id) {
 }
 // player do filme: usa a tela do player no modo "canal" (sem episódios)
 async function openFilmePlayer(id) {
-  only('view'); $('view').classList.add('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
+  only('view'); $('view').classList.add('canal', 'picker'); $('evch').hidden = true; window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('epName').textContent = '';
   let d;
   try { d = await loadFilme(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -777,7 +777,7 @@ async function renderGrid() {
   only('list'); window.scrollTo(0, 0);
   const lista = page === 'busca';
   $('sbar').hidden = !lista;
-  $('brTabs').hidden = true;
+  $('brTabs').hidden = true; $('qfiltro').hidden = true;
   $('grid').className = lista ? 'grid rows' : 'grid';
   $('grid').innerHTML = ''; $('msg').textContent = 'Carregando...';
   $('listTitle').textContent = query ? (lista ? 'Resultados' : 'Resultados para "' + query + '"') : lista ? 'Séries recomendadas' : page === 'hoje' ? 'No ar hoje' : page === 'genero' ? gen(gsel) : 'Minha lista';
@@ -797,9 +797,28 @@ async function renderGrid() {
     }
     else list = salvos('favs');
   } catch (e) { $('msg').textContent = e.message; return; }
-  list.forEach(s => $('grid').appendChild(lista ? itemLista(s) : tile(s)));
-  $('msg').textContent = list.length ? '' : (page === 'lista' && !query ? 'Sua lista está vazia. Abra uma série e toque em "Minha lista".' : 'Nada encontrado.');
+  // na busca: filtro Todos / Séries / Filmes (a lista completa fica guardada, então trocar o filtro não consulta de novo)
+  const fq = $('qfiltro');
+  const desenha = () => {
+    const l = query && qtipo !== 'todos' ? list.filter(s => qtipo === 'filmes' ? s.mt : !s.mt) : list;
+    $('grid').innerHTML = '';
+    l.forEach(s => $('grid').appendChild(lista ? itemLista(s) : tile(s)));
+    $('msg').textContent = l.length ? '' : (page === 'lista' && !query ? 'Sua lista está vazia. Abra uma série e toque em "Minha lista".' : query && list.length ? 'Nenhum resultado desse tipo.' : 'Nada encontrado.');
+  };
+  fq.innerHTML = ''; fq.hidden = !(query && list.length);
+  if (!fq.hidden) {
+    const n = { todos: list.length, series: list.filter(s => !s.mt).length, filmes: list.filter(s => s.mt).length };
+    [['todos', 'Todos'], ['series', 'Séries'], ['filmes', 'Filmes']].forEach(([k, t]) => {
+      const b = document.createElement('button');
+      b.textContent = t + ' (' + n[k] + ')';
+      if (k === qtipo) b.className = 'on';
+      b.onclick = () => { qtipo = k; [...fq.children].forEach(x => x.classList.toggle('on', x === b)); desenha(); };
+      fq.appendChild(b);
+    });
+  }
+  desenha();
 }
+let qtipo = 'todos';   // filtro da busca
 
 /* ---------- lista de episódios (detalhes e player) ---------- */
 function renderEps(box, d, sn, activeE, pick) {
@@ -922,7 +941,7 @@ $('mShare').onclick = async () => {
 
 /* ---------- player ---------- */
 async function openPlayer(id) {
-  only('view'); $('view').classList.remove('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
+  only('view'); $('view').classList.remove('canal'); $('view').classList.add('picker'); $('evch').hidden = true; window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('eps').innerHTML = ''; $('epName').textContent = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -1101,7 +1120,7 @@ async function montaCanais() {
 }
 
 async function openCanal(slug) {
-  only('view'); $('view').classList.add('canal'); $('evch').hidden = true; window.scrollTo(0, 0);
+  only('view'); $('view').classList.add('canal'); $('view').classList.remove('picker'); $('evch').hidden = true; window.scrollTo(0, 0);
   let lista = [];
   try { lista = await loadCanais(); } catch {}
   const c = lista.find(x => x.s === slug);
@@ -1112,7 +1131,16 @@ async function openCanal(slug) {
 }
 
 // iframe do player; a URL sempre é montada com um prefixo fixo e um identificador validado
-const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
+// Bloqueio de popups: o player de terceiros abre uma janela de propaganda ao dar play. Com `sandbox` sem
+// allow-popups / allow-top-navigation / allow-modals / allow-downloads o navegador impede a janela, a troca da
+// página e os downloads, e o resto continua funcionando (script, vídeo, tela cheia). Alguns players se recusam
+// a tocar isolados desse jeito; por isso há o botão no player para desligar (a escolha fica salva).
+const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-pointer-lock';
+let bloqueiaPopup = get('bloqueiaPopup', true);
+const embed = url => '<iframe src="' + url + '"' + (bloqueiaPopup ? ' sandbox="' + SANDBOX + '"' : '') + ' allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
+function rotuloPopup() {
+  $('pPopup').textContent = bloqueiaPopup ? '🛡 Popups bloqueados · não tocou? Toque aqui' : '⚠ Popups liberados · toque para bloquear';
+}
 
 /* ---------- player persistente ----------
    O iframe vive em #pbox, fora das telas. Na tela do player o #pbox é posicionado em cima do
@@ -1140,6 +1168,11 @@ function place() {
 $('pExpand').onclick = () => { if (pstate) location.hash = pstate.hash; };
 $('pClose').onclick = stopEmbed;
 $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); else route(); };
+$('pPopup').onclick = () => {
+  bloqueiaPopup = !bloqueiaPopup; set('bloqueiaPopup', bloqueiaPopup); rotuloPopup();
+  if (pstate) $('pframe').innerHTML = embed(pstate.url);   // recarrega o vídeo já com a nova configuração
+};
+rotuloPopup();
 
 /* ---------- agenda esportiva ----------
    A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue
@@ -1276,7 +1309,7 @@ function renderAgList() {
 }
 
 async function openEvento(slug) {
-  only('view'); $('view').classList.add('canal'); window.scrollTo(0, 0);
+  only('view'); $('view').classList.add('canal'); $('view').classList.remove('picker'); window.scrollTo(0, 0);
   if (!agenda) await loadAgenda();
   const e = agenda.eventos.find(x => x.i === slug);
   $('vTitle').textContent = e ? e.t : slug;
