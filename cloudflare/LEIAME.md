@@ -1,42 +1,44 @@
 # Worker do ChiquinhaFlix (Cloudflare)
 
-O SuperFlix não deixa o navegador ler a lista de eventos direto (a resposta não tem o cabeçalho CORS). Este Worker faz a chamada pelo servidor da Cloudflare e devolve só o que o app usa, já com o CORS liberado para o site. Assim a agenda atualiza sozinha toda vez que alguém abre o app, sem Python e sem rodar nada na sua máquina.
+O navegador não consegue ler diretamente algumas das listas que o app usa (os serviços não liberam CORS). Este Worker faz as consultas pelo servidor da Cloudflare, devolve só o que o app precisa e libera o acesso apenas para o site.
 
-Ele também serve a **lista de canais ao vivo** (rota `/canais`, com o programa no ar agora, vinda do Rei dos Embeds) e o **catálogo de séries da TMDB** (rota `/tmdb/...`): o site pede ao Worker, e o Worker consulta a TMDB com a sua chave, que fica guardada como segredo e nunca aparece no site nem no GitHub.
+Ele serve o catálogo de séries e filmes da **TMDB** (a chave fica guardada como segredo do Worker, nunca no site nem no GitHub), a lista de canais ao vivo, a agenda esportiva e o calendário de episódios.
 
-## Publicar (um comando só)
+## Publicar
 
-Crie a chave grátis em https://www.themoviedb.org/settings/api (a "Chave da API", de 32 caracteres, ou o "Token de leitura", que começa com `eyJ`). Depois, na pasta do projeto:
+Você precisa do [Node.js](https://nodejs.org) (versão LTS) e de uma conta gratuita na Cloudflare. Crie a chave da TMDB em https://www.themoviedb.org/settings/api (a "Chave da API" ou o "Token de leitura") e, na pasta do projeto, rode:
 
 ```bash
 python cloudflare/publicar.py --tmdb SUA_CHAVE
 ```
 
-Nas próximas vezes, para atualizar só o código, basta `python cloudflare/publicar.py` (a chave já fica guardada no Worker). Sem `--tmdb` e sem chave guardada, o script pede a chave na tela, sem mostrá-la. Para trocar a chave, rode de novo com `--tmdb NOVA_CHAVE`.
+Na primeira vez o script abre o navegador para você entrar na Cloudflare e clicar em **Permitir**. Ele não lê nem guarda senha ou token. Depois ele:
 
-O script:
+1. publica o Worker (`worker.js`);
+2. guarda a chave da TMDB como segredo (`TMDB_KEY`);
+3. testa o endereço novo;
+4. grava o endereço em `config.js` e envia só esse arquivo ao GitHub.
 
-1. confere se o **Node.js** está instalado (se não estiver, instale a versão LTS em https://nodejs.org);
-2. confere o login na Cloudflare. Na **primeira vez** ele abre o navegador: entre (ou crie a conta **gratuita**) e clique em **Permitir**. É a única parte que precisa de você, e o script não lê nem guarda senha ou token;
-3. publica o Worker (`cloudflare/worker.js`) e, se pedir para registrar um subdomínio `workers.dev`, aceite;
-4. guarda a chave da TMDB como segredo do Worker (`wrangler secret put TMDB_KEY`);
-5. testa o endereço novo (agenda e TMDB) com uma chamada;
-6. grava o endereço em `config.js` e envia só esse arquivo ao GitHub. Alguns minutos depois o site passa a usar o Worker.
+Nas próximas vezes, para atualizar só o código, basta `python cloudflare/publicar.py`: a chave já fica guardada. Para trocá-la, rode de novo com `--tmdb NOVA_CHAVE`.
 
 ## Como funciona
 
-- Rotas: `GET /agenda` (SuperFlix, com a agenda do Rei dos Embeds como reserva se ele falhar), `GET /canais`, `GET /calendario` (episódios do SuperFlix, em cache por 1 hora; `?passado=45` inclui também os dias anteriores, para o calendário do mês) e `GET /tmdb/...` (só caminhos e parâmetros de uma lista fixa: tendências, populares, no ar hoje, em cartaz, busca, detalhes e temporadas, de séries e de filmes; `include_adult` é sempre falso).
-- A resposta do SuperFlix fica em **cache na Cloudflare por 5 minutos**. Muitas aberturas viram uma única chamada ao SuperFlix a cada 5 minutos, o que protege contra o limite de requisições deles.
-- O Worker devolve só os campos usados (nome, esporte, competição, horário, times, escudos e canais) e descarta identificadores inseguros.
-- O CORS vale **só para** `https://carlosmirandd.github.io` e para `localhost` (portas 8000 e 8765). Navegadores de outros sites recebem 403 e nem chegam a chamar o SuperFlix. Se o endereço do site mudar, edite `SITES_PERMITIDOS` em `worker.js` e rode o comando de novo.
-- No app, a agenda aparece **na hora** (cache do navegador ou `agenda.json`) e é atualizada pelo Worker em segundo plano. Se o Worker falhar, o app lembra por 5 minutos e segue com o que já tem. O botão **Atualizar** força uma nova tentativa.
+| Rota | O que devolve |
+|---|---|
+| `/tmdb/...` | consultas à TMDB, só de uma lista fixa de caminhos e parâmetros (conteúdo adulto sempre desligado) |
+| `/canais` | canais ao vivo, com o programa no ar agora |
+| `/agenda` | eventos esportivos, com uma fonte de reserva se a principal falhar |
+| `/calendario` | episódios que estreiam, por dia (`?passado=45` inclui os dias anteriores) |
+
+- As respostas ficam em cache na Cloudflare (de 5 minutos a 1 hora), então muitas aberturas viram poucas consultas às fontes.
+- O Worker devolve só os campos usados e descarta identificadores inseguros.
+- O acesso vale **só para** `https://carlosmirandd.github.io` e para `localhost` (portas 8000 e 8765). Se o endereço do site mudar, edite `SITES_PERMITIDOS` em `worker.js` e publique de novo.
+- O Worker enxerga as chamadas do site (endereço e IP de quem usa) e não guarda nada.
 
 ## Limites e cuidados
 
-- A TMDB responde pelo cache da Cloudflare por 1 hora, então o Worker quase não consulta a TMDB de novo.
 - O plano gratuito da Cloudflare permite 100 mil chamadas por dia, muito mais do que este app usa.
-- O SuperFlix pode limitar (429) ou bloquear a Cloudflare. Nesse caso o Worker responde 503/502, e o app usa o `agenda.json` publicado como plano B (`python tools/atualizar_agenda.py --publicar`).
-- O Worker enxerga as chamadas feitas pelo seu site (endereço e IP de quem abre a agenda). Não guarda nada.
+- As fontes podem limitar ou bloquear as consultas. Nesse caso o Worker responde 503 ou 502, e o app usa os arquivos de reserva (`canais.json` e `agenda.json`). Para atualizar o `agenda.json`: `python tools/atualizar_agenda.py --publicar`.
 
 ## Atualizar ou remover
 
