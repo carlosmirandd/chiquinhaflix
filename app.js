@@ -1131,16 +1131,10 @@ async function openCanal(slug) {
 }
 
 // iframe do player; a URL sempre é montada com um prefixo fixo e um identificador validado
-// Bloqueio de popups: o player de terceiros abre uma janela de propaganda ao dar play. Com `sandbox` sem
-// allow-popups / allow-top-navigation / allow-modals / allow-downloads o navegador impede a janela, a troca da
-// página e os downloads, e o resto continua funcionando (script, vídeo, tela cheia). Alguns players se recusam
-// a tocar isolados desse jeito; por isso há o botão no player para desligar (a escolha fica salva).
-const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-pointer-lock';
-let bloqueiaPopup = get('bloqueiaPopup', true);
-const embed = url => '<iframe src="' + url + '"' + (bloqueiaPopup ? ' sandbox="' + SANDBOX + '"' : '') + ' allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
-function rotuloPopup() {
-  $('pPopup').textContent = bloqueiaPopup ? '🛡 Popups bloqueados · não tocou? Toque aqui' : '⚠ Popups liberados · toque para bloquear';
-}
+// Sem `sandbox` de propósito: o player de terceiros detecta o isolamento e se recusa a tocar ("Sandbox detectado"),
+// e a janela de propaganda que ele abre ao dar play faz parte do funcionamento dele.
+try { localStorage.removeItem('bloqueiaPopup'); } catch {}   // preferência de uma versão anterior
+const embed = url => '<iframe src="' + url + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
 
 /* ---------- player persistente ----------
    O iframe vive em #pbox, fora das telas. Na tela do player o #pbox é posicionado em cima do
@@ -1168,11 +1162,6 @@ function place() {
 $('pExpand').onclick = () => { if (pstate) location.hash = pstate.hash; };
 $('pClose').onclick = stopEmbed;
 $('pStop').onclick = () => { stopEmbed(); if (location.hash) history.back(); else route(); };
-$('pPopup').onclick = () => {
-  bloqueiaPopup = !bloqueiaPopup; set('bloqueiaPopup', bloqueiaPopup); rotuloPopup();
-  if (pstate) $('pframe').innerHTML = embed(pstate.url);   // recarrega o vídeo já com a nova configuração
-};
-rotuloPopup();
 
 /* ---------- agenda esportiva ----------
    A API de eventos do SuperFlix não manda o cabeçalho CORS, então o navegador não consegue
