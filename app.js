@@ -13,6 +13,14 @@ const get = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; }
 const set = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 // favoritos e histórico: só entradas já no formato da TMDB (as antigas eram do TVMaze, com outros IDs)
 const salvos = k => get(k, []).filter(x => x && x.tm);
+// Fonte de canais e eventos ao vivo: Rei dos Embeds (padrão) ou SuperFlix, trocável no player. Séries e filmes só
+// existem no SuperFlix. O domínio dos embeds do Rei dos Embeds muda de tempos em tempos, então o Worker passa o
+// endereço atual de cada canal (campo u); sem ele vale o endereço padrão abaixo.
+const RDE = 'https://v2.rdembed.sbs/';
+let fonteLive = get('fonteLive', 'rde'), liveAtual = null;
+const rdeBase = () => { const c = (canais || []).find(x => x.u); return c ? c.u.slice(0, c.u.lastIndexOf('/') + 1) : RDE; };
+const urlCanal = (slug, c) => fonteLive === 'rde' ? ((c && c.u) || rdeBase() + slug) : CANAL + slug;
+const urlEvento = slug => fonteLive === 'rde' ? rdeBase() + 'e/' + slug : EVENTO + slug;
 
 /* ---------- utilidades ---------- */
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -840,7 +848,7 @@ async function openFilme(id) {
 }
 // player do filme: usa a tela do player no modo "canal" (sem episódios)
 async function openFilmePlayer(id) {
-  only('view'); $('view').classList.add('canal', 'picker'); $('evch').hidden = true; window.scrollTo(0, 0);
+  only('view'); $('view').classList.add('canal', 'picker'); $('evch').hidden = true; $('pFonte').hidden = true; window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('epName').textContent = '';
   let d;
   try { d = await loadFilme(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -1021,7 +1029,7 @@ $('mShare').onclick = async () => {
 
 /* ---------- player ---------- */
 async function openPlayer(id) {
-  only('view'); $('view').classList.remove('canal'); $('view').classList.add('picker'); $('evch').hidden = true; window.scrollTo(0, 0);
+  only('view'); $('view').classList.remove('canal'); $('view').classList.add('picker'); $('evch').hidden = true; $('pFonte').hidden = true; window.scrollTo(0, 0);
   $('player').innerHTML = ''; $('vTitle').textContent = 'Carregando...'; $('eps').innerHTML = ''; $('epName').textContent = '';
   let d;
   try { d = await loadShow(id); } catch (e) { $('vTitle').textContent = e.message; return; }
@@ -1089,7 +1097,8 @@ async function viaWorkerCanais() {
     if (!j || !Array.isArray(j.canais)) return null;
     const s = (v, n) => String(v == null ? '' : v).slice(0, n);
     return j.canais.filter(c => c && /^[A-Za-z0-9_-]{1,60}$/.test(c.s || '')).map(c => ({
-      s: c.s, n: s(c.n, 60) || c.s, c: s(c.c, 40), a: c.a ? 1 : 0, np: s(c.np, 80), pr: Math.max(0, Math.min(100, +c.pr || 0)),
+      s: c.s, n: s(c.n, 60) || c.s, c: s(c.c, 40), a: c.a ? 1 : 0, np: s(c.np, 80),
+      u: typeof c.u === 'string' && c.u.length < 160 && c.u.indexOf('https://') === 0 && /rdembed|rdse/.test(c.u.split('/')[2] || '') && /^[A-Za-z0-9_-]{1,60}$/.test(c.u.split('/').pop()) ? c.u : '', pr: Math.max(0, Math.min(100, +c.pr || 0)),
       nx: (Array.isArray(c.nx) ? c.nx : []).slice(0, 3).map(p => [s(p && p[0], 80), +(p && p[1]) || 0, +(p && p[2]) || 0]).filter(p => p[0] && p[1]),
     }));
   } catch { return null; } finally { clearTimeout(t); }
@@ -1101,7 +1110,7 @@ function mesclaCanais(base, vivos) {
   return vivos.map(v => {
     const b = antigo.get(v.s);
     const cats = [...new Set([...((b && b.c) || []), ...(v.c ? [v.c] : [])])];
-    return { s: v.s, n: v.n, c: cats, ...((b && b.a) || v.a ? { a: 1 } : {}), np: v.np, pr: v.pr, nx: v.nx };
+    return { s: v.s, n: v.n, c: cats, ...((b && b.a) || v.a ? { a: 1 } : {}), np: v.np, pr: v.pr, nx: v.nx, u: v.u };
   });
 }
 async function loadCanais() {
@@ -1207,7 +1216,8 @@ async function openCanal(slug) {
   $('vTitle').textContent = c ? c.n : slug;
   $('epName').textContent = (c && c.c.length ? 'Ao vivo · ' + c.c.join(' · ') : 'Ao vivo') + (c && c.np ? ' · Agora: ' + c.np : '');
   // slug validado pelo regex da rota (letras, números, _ e -)
-  showEmbed(CANAL + slug, c ? c.n : slug, '#canal=' + slug);
+  liveAtual = { tipo: 'canal', slug }; mostraFonte();
+  showEmbed(urlCanal(slug, c), c ? c.n : slug, '#canal=' + slug);
 }
 
 // iframe do player; a URL sempre é montada com um prefixo fixo e um identificador validado
@@ -1216,7 +1226,13 @@ async function openCanal(slug) {
 try { localStorage.removeItem('bloqueiaPopup'); } catch {}   // preferência de uma versão anterior
 // Opções do player (hashes no fim do endereço, documentadas por ele): #noEpList esconde a lista de episódios dele
 // (o app já tem a própria; só nas séries), #noLink tira o botão de link externo e #color deixa no vermelho do site.
-const opcoesPlayer = url => url + (/\/serie\//.test(url) ? '#noEpList' : '') + '#noLink#color:e50914';
+const opcoesPlayer = url => url.indexOf('https://superflixapi.fun/') !== 0 ? url : url + (/\/serie\//.test(url) ? '#noEpList' : '') + '#noLink#color:e50914';   // só o SuperFlix conhece essas opções
+// botão do player de canais e eventos: troca a fonte (Rei dos Embeds / SuperFlix) e reabre
+const mostraFonte = () => { $('pFonte').hidden = false; $('pFonte').textContent = fonteLive === 'rde' ? 'Fonte: Rei dos Embeds · trocar' : 'Fonte: SuperFlix · trocar'; };
+$('pFonte').onclick = () => {
+  fonteLive = fonteLive === 'rde' ? 'sf' : 'rde'; set('fonteLive', fonteLive);
+  if (liveAtual) (liveAtual.tipo === 'canal' ? openCanal : openEvento)(liveAtual.slug);
+};
 const embed = url => '<iframe src="' + opcoesPlayer(url) + '" allow="autoplay *; encrypted-media *; picture-in-picture *; fullscreen *; clipboard-write *; accelerometer *; gyroscope *" allowfullscreen frameborder="0" scrolling="no"></iframe>';
 
 /* ---------- player persistente ----------
@@ -1390,8 +1406,9 @@ async function openEvento(slug) {
   const box = $('evch');
   box.innerHTML = '';
   const tocar = (url, btn) => { showEmbed(url, e ? e.t : slug, '#evento=' + slug); [...box.children].forEach(x => x.classList.toggle('on', x === btn)); };
-  const itens = [['Evento (todos os canais)', EVENTO + slug]];
-  (e && e.e ? e.e : []).forEach(([nome, cs, q]) => { if (/^[A-Za-z0-9_-]{1,60}$/.test(cs)) itens.push([nome + (q ? ' · ' + q : ''), CANAL + cs]); });
+  liveAtual = { tipo: 'evento', slug }; mostraFonte();
+  const itens = [['Evento (todos os canais)', urlEvento(slug)]];
+  (e && e.e ? e.e : []).forEach(([nome, cs, q]) => { if (/^[A-Za-z0-9_-]{1,60}$/.test(cs)) itens.push([nome + (q ? ' · ' + q : ''), urlCanal(cs, (canais || []).find(x => x.s === cs))]); });
   itens.forEach(([rotulo, url]) => {
     const b = document.createElement('button');
     b.textContent = rotulo;

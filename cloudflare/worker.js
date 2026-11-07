@@ -74,6 +74,7 @@ function compactaCanal(c) {
   const pr = Number(c.now_playing_progress);
   return {
     s: c.id, n: txt(c.name, 60) || c.id, c: txt(c.category, 40), a: c.category === 'Adulto' ? 1 : 0,
+    u: /^https:\/\/[a-z0-9.-]*(rdembed|rdse)[a-z0-9.-]*\/[A-Za-z0-9_-]{1,60}$/.test(c.embed_url || '') ? c.embed_url : '',   // endereço atual do embed do canal
     np: c.now_playing_has_guide ? txt(c.now_playing_title, 80) : '', pr: pr >= 0 && pr <= 100 ? Math.round(pr) : 0, nx: prox,
   };
 }
