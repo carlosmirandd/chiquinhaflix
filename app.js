@@ -126,7 +126,16 @@ const TITULOS = { home: 'Início', series: 'Séries', filmes: 'Filmes', hoje: 'N
 let homeTk = 0;   // descarta o "Em breve" que chegar depois de a home ser refeita
 
 const SECTIONS = ['home', 'list', 'view', 'vivo'];
-function only(name) { SECTIONS.forEach(s => $(s).hidden = s !== name); $('msg').textContent = ''; }
+function only(name) { SECTIONS.forEach(s => $(s).hidden = s !== name); $('msg').textContent = ''; $('dicaAds').hidden = !(name === 'view' && !get('dicaAds', false)); }
+// Dica na tela do player: os anúncios e popups vêm do player de terceiros e o site não consegue barrá-los; quem
+// assiste pode usar um bloqueador no próprio aparelho. Texto por aparelho; some de vez ao fechar.
+(() => {
+  const celular = matchMedia('(pointer: coarse)').matches;
+  $('dicaAdsTxt').innerHTML = celular
+    ? '<b>Anúncios e popups?</b> Eles vêm do player. No celular, use um navegador com bloqueador (Brave, ou Firefox com uBlock Origin) ou o DNS do AdGuard (Android: Configurações → DNS privado → <code>dns.adguard-dns.com</code>; no iPhone, o app do <a href="https://adguard-dns.io" target="_blank" rel="noopener noreferrer">AdGuard</a>).'
+    : '<b>Anúncios e popups?</b> Eles vêm do player. No computador, uma extensão de bloqueio de anúncios no navegador, como o <a href="https://ublockorigin.com" target="_blank" rel="noopener noreferrer">uBlock Origin</a>, evita isso.';
+  $('dicaAdsX').onclick = () => { set('dicaAds', true); $('dicaAds').hidden = true; };
+})();
 window.addEventListener('scroll', () => $('hdr').classList.toggle('solid', scrollY > 10));
 
 function syncUI() {
